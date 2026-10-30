@@ -116,6 +116,16 @@ export async function getActiveVisitorVisits(token: string, search = '') {
   return response.data;
 }
 
+export async function lookupVisitorIdentity(token: string, identification: string) {
+  const response = await apiRequest<{ data: { identification: string; name: string } | null }>(`/api/v1/movements/visitors/identity?identification=${encodeURIComponent(identification.trim())}`, {}, token);
+  return response.data;
+}
+
+export async function getAvailableVisitorBadges(token: string) {
+  const response = await apiRequest<{ data: string[] }>('/api/v1/movements/visitors/badges/available', {}, token);
+  return response.data;
+}
+
 export async function registerVisitorExit(token: string, visitId: string) {
   const response = await apiRequest<{ data: ActiveVisitorVisit }>(`/api/v1/movements/visitors/${visitId}/exit`, { method: 'POST' }, token);
   return response.data;
