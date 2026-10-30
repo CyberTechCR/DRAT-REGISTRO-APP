@@ -133,8 +133,8 @@ export async function resolvePrivateVehicleMovement(token: string, plate: string
   return response.data;
 }
 
-export async function confirmPrivateVehicleMovement(token: string, input: { plate: string; driverEmployeeId?: string; driverVisitorVisitId?: string; ownerAuthorizationConfirmed?: boolean; authorizationNote?: string; occupantEmployeeIds: string[]; movementType: 'INGRESO' | 'SALIDA' }) {
-  const response = await apiRequest<{ data: { id: string; movementType: 'INGRESO' | 'SALIDA'; occurredAt: string } }>('/api/v1/movements/private-vehicles', { method: 'POST', body: JSON.stringify({ ...input, source: 'PLACA_MANUAL' }) }, token);
+export async function confirmPrivateVehicleMovement(token: string, input: { plate: string; driverEmployeeId?: string; driverVisitorVisitId?: string; ownerAuthorizationConfirmed?: boolean; authorizationNote?: string; occupantEmployeeIds: string[]; movementType: 'INGRESO' | 'SALIDA'; source?: 'PLACA_MANUAL' | 'OCR' }) {
+  const response = await apiRequest<{ data: { id: string; movementType: 'INGRESO' | 'SALIDA'; occurredAt: string } }>('/api/v1/movements/private-vehicles', { method: 'POST', body: JSON.stringify({ ...input, source: input.source ?? 'PLACA_MANUAL' }) }, token);
   return response.data;
 }
 

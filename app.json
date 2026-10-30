@@ -28,6 +28,20 @@
       "expo-router",
       "react-native-nfc-manager",
       [
+        "expo-camera",
+        {
+          "cameraPermission": "SICAF necesita acceso a la cámara para reconocer placas vehiculares.",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "rn-mlkit-ocr",
+        {
+          "ocrModels": ["latin"],
+          "ocrUseBundled": true
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#208AEF",

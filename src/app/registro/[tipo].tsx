@@ -1,12 +1,13 @@
 import { Redirect, router, useLocalSearchParams, type Href } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { SICAFColors as colors } from '@/constants/theme';
 import { useSession } from '@/auth/SessionContext';
 import { confirmInstitutionalDeparture, confirmInstitutionalReturn, confirmManualMovement, confirmNfcMovement, confirmPrivateVehicleMovement, getActiveVisitorVisits, getEmergencyPresence, getPresenceCount, registerVisitorEntry, registerVisitorExit, resolveInstitutionalDeparture, resolveInstitutionalReturn, resolveManualMovement, resolveNfcMovement, resolvePrivateVehicleMovement, searchActiveEmployees, type ActiveVisitorVisit, type Employee, type EmergencyPresenceRecord, type InstitutionalTrip, type ManualMovementResolution, type NfcMovementResolution, type PrivateVehicleMovementResolution } from '@/services/api';
 import { readPhysicalNfcUid } from '@/services/nfc';
+import { PlateOcrScanner } from '@/components/plate-ocr-scanner';
 
 const processNames: Record<string, string> = {
   nfc: 'Escanear TAG NFC',
@@ -139,14 +140,16 @@ function PrivateVehicleMovementScreen() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [unknownPlate, setUnknownPlate] = useState(false);
+  const [ocrOpen, setOcrOpen] = useState(false);
+  const [plateSource, setPlateSource] = useState<'PLACA_MANUAL' | 'OCR'>('PLACA_MANUAL');
 
   if (!session) return <Redirect href={'/login' as Href} />;
 
-  async function findVehicle() {
-    if (!plate.trim()) { setError('Ingrese la placa del vehículo.'); return; }
+  async function findVehicle(approvedPlate = plate) {
+    if (!approvedPlate.trim()) { setError('Ingrese la placa del vehículo.'); return; }
     setLoading(true); setError(''); setSuccess(''); setUnknownPlate(false);
     try {
-      const found = await resolvePrivateVehicleMovement(session!.token, plate);
+      const found = await resolvePrivateVehicleMovement(session!.token, approvedPlate);
       setResolution(found); setPlate(found.vehicle.plate); setDriver(found.habitualDriver); setVisitorDriver(null); setOccupants([]); setResults([]); setVisitorResults([]); setAuthorizationConfirmed(false); setAuthorizationNote('');
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : 'No fue posible consultar la placa';
@@ -196,7 +199,7 @@ function PrivateVehicleMovementScreen() {
     if (!resolution || (!driver && !visitorDriver)) return;
     setLoading(true); setError('');
     try {
-      await confirmPrivateVehicleMovement(session!.token, { plate: resolution.vehicle.plate, driverEmployeeId: driver?.id, driverVisitorVisitId: visitorDriver?.id, ownerAuthorizationConfirmed: visitorDriver ? authorizationConfirmed : undefined, authorizationNote: visitorDriver ? authorizationNote : undefined, occupantEmployeeIds: occupants.map((item) => item.id), movementType: resolution.proposedMovement });
+      await confirmPrivateVehicleMovement(session!.token, { plate: resolution.vehicle.plate, driverEmployeeId: driver?.id, driverVisitorVisitId: visitorDriver?.id, ownerAuthorizationConfirmed: visitorDriver ? authorizationConfirmed : undefined, authorizationNote: visitorDriver ? authorizationNote : undefined, occupantEmployeeIds: occupants.map((item) => item.id), movementType: resolution.proposedMovement, source: plateSource });
       const count = await getPresenceCount(session!.token);
       setSuccess(`${resolution.proposedMovement === 'INGRESO' ? 'Ingreso' : 'Salida'} del vehículo registrado. Aforo actual: ${count}.`);
       setResolution(null); setDriver(null); setVisitorDriver(null); setOccupants([]); setPlate(''); setAuthorizationConfirmed(false); setAuthorizationNote('');
@@ -208,7 +211,7 @@ function PrivateVehicleMovementScreen() {
     <View style={styles.header}><Pressable onPress={() => router.back()} style={styles.backButton}><Text style={styles.backText}>‹ Volver</Text></Pressable><Text style={styles.brand}>SICAF · DRAT</Text></View>
     <ScrollView contentContainerStyle={styles.nfcContent} keyboardShouldPersistTaps="handled">
       <Text style={styles.eyebrow}>MOVIMIENTO VEHICULAR</Text><Text style={styles.title}>Vehículo particular</Text><Text style={styles.description}>Ingrese la placa para identificar el vehículo y su conductor habitual. El reconocimiento por cámara se conectará posteriormente.</Text>
-      {!resolution && <><Text style={styles.fieldLabel}>Placa</Text><TextInput autoCapitalize="characters" placeholder="Ejemplo: ABC123" placeholderTextColor={colors.muted} value={plate} onChangeText={setPlate} style={styles.input} onSubmitEditing={() => void findVehicle()} /><Pressable disabled={loading} onPress={() => void findVehicle()} style={styles.primaryButton}>{loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Buscar placa</Text>}</Pressable></>}
+      {!resolution && <><Pressable disabled={loading} onPress={() => setOcrOpen(true)} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Escanear placa con cámara</Text></Pressable><View style={styles.methodDivider}><View style={styles.dividerLine}/><Text style={styles.dividerText}>O INGRESO MANUAL</Text><View style={styles.dividerLine}/></View><Text style={styles.fieldLabel}>Placa</Text><TextInput autoCapitalize="characters" placeholder="Ejemplo: ABC123" placeholderTextColor={colors.muted} value={plate} onChangeText={(value) => { setPlate(value); setPlateSource('PLACA_MANUAL'); }} style={styles.input} onSubmitEditing={() => void findVehicle()} /><Pressable disabled={loading} onPress={() => void findVehicle()} style={styles.cancelButton}>{loading ? <ActivityIndicator color={colors.primary} /> : <Text style={styles.cancelText}>Buscar placa escrita</Text>}</Pressable></>}
       {unknownPlate && <Pressable onPress={() => router.replace({ pathname: '/registro/[tipo]', params: { tipo: 'visitante' } })} style={styles.cancelButton}><Text style={styles.cancelText}>Continuar con flujo de visitantes</Text></Pressable>}
       {resolution && <View style={styles.confirmCard}>
         <Text style={styles.confirmLabel}>VEHÍCULO IDENTIFICADO</Text><Text style={styles.employeeName}>{resolution.vehicle.plate}</Text><Text style={styles.employeeDetail}>{resolution.vehicle.brand} {resolution.vehicle.model} · {resolution.vehicle.color}</Text>
@@ -230,6 +233,7 @@ function PrivateVehicleMovementScreen() {
       {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}{success ? <Text style={styles.success}>{success}</Text> : null}
       <View style={styles.notice}><Text style={styles.noticeTitle}>Registro único</Text><Text style={styles.noticeText}>El conductor se registra una sola vez. Los acompañantes se agregan individualmente y una placa desconocida se envía al flujo de visitantes.</Text></View>
     </ScrollView>
+    <Modal visible={ocrOpen} animationType="slide" onRequestClose={() => setOcrOpen(false)}><SafeAreaView style={styles.screen}><PlateOcrScanner onCancel={() => setOcrOpen(false)} onApprove={(approvedPlate) => { setPlate(approvedPlate); setPlateSource('OCR'); setOcrOpen(false); void findVehicle(approvedPlate); }}/></SafeAreaView></Modal>
   </SafeAreaView>;
 }
 
