@@ -5,15 +5,18 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useSession } from '@/auth/SessionContext';
 import { SICAFColors as colors } from '@/constants/theme';
-import { createNfcTag, deleteNfcTag, getEmployees, getNfcTags, updateNfcTag, type Employee, type NfcTagRecord } from '@/services/api';
+import { createNfcTag, deleteNfcTag, getEmployees, getNfcTags, getPermanentProviders, updateNfcTag, updatePermanentProvider, type Employee, type NfcTagRecord, type PermanentProviderRecord } from '@/services/api';
 import { readPhysicalNfcUid } from '@/services/nfc';
 
 export default function NfcTagAdministrationScreen() {
   const { session } = useSession();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [tags, setTags] = useState<NfcTagRecord[]>([]);
+  const [providers, setProviders] = useState<PermanentProviderRecord[]>([]);
   const [uid, setUid] = useState('');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
+  const [selectedProviderId, setSelectedProviderId] = useState('');
+  const [target, setTarget] = useState<'FUNCIONARIO' | 'PROVEEDOR'>('FUNCIONARIO');
   const [editingTagId, setEditingTagId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -22,8 +25,8 @@ export default function NfcTagAdministrationScreen() {
 
   useEffect(() => {
     if (!session || session.user.role !== 'ADMINISTRADOR') return;
-    Promise.all([getEmployees(session.token), getNfcTags(session.token)])
-      .then(([employeeData, tagData]) => { setEmployees(employeeData); setTags(tagData); })
+    Promise.all([getEmployees(session.token), getNfcTags(session.token), getPermanentProviders(session.token)])
+      .then(([employeeData, tagData, providerData]) => { setEmployees(employeeData); setTags(tagData); setProviders(providerData); })
       .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : 'No fue posible cargar la información'))
       .finally(() => setLoading(false));
   }, [session]);
@@ -45,25 +48,36 @@ export default function NfcTagAdministrationScreen() {
   }
 
   async function assign() {
-    if (!uid || !selectedEmployeeId) { setError('Lea una etiqueta y seleccione un funcionario.'); return; }
+    if (!uid || (target === 'FUNCIONARIO' ? !selectedEmployeeId : !selectedProviderId)) { setError('Lea una etiqueta y seleccione el destino de la asignación.'); return; }
     setLoading(true); setError(''); setMessage('');
     try {
-      const saved = editingTagId
-        ? await updateNfcTag(token, editingTagId, { employeeId: selectedEmployeeId, active: true })
-        : await createNfcTag(token, { code: uid, employeeId: selectedEmployeeId });
-      setTags((current) => editingTagId ? current.map((tag) => tag.id === saved.id ? saved : tag) : [saved, ...current]);
-      setUid(''); setSelectedEmployeeId(''); setEditingTagId(null);
-      setMessage(`TAG ${editingTagId ? 'reasignado' : 'asignado'} correctamente a ${saved.employee?.name}.`);
+      const currentTag = editingTagId ? tags.find((item) => item.id === editingTagId) : undefined;
+      if (currentTag?.providerAssignment && (target === 'FUNCIONARIO' || currentTag.providerAssignment.id !== selectedProviderId)) {
+        const previous = providers.find((item) => item.id === currentTag.providerAssignment?.id);
+        if (previous) await updatePermanentProvider(token, previous.id, { identification: previous.identification, name: previous.name, company: previous.company, phone: previous.phone, active: previous.active, vehiclePlates: previous.vehicles.map((item) => item.plate), nfcTagIds: previous.tags.filter((item) => item.id !== currentTag.id).map((item) => item.id) });
+      }
+      if (currentTag?.employeeId && target === 'PROVEEDOR') await updateNfcTag(token, currentTag.id, { employeeId: null });
+      if (target === 'FUNCIONARIO') {
+        const saved = editingTagId ? await updateNfcTag(token, editingTagId, { employeeId: selectedEmployeeId, active: true }) : await createNfcTag(token, { code: uid, employeeId: selectedEmployeeId, purpose: 'GENERAL' });
+        setTags((current) => editingTagId ? current.map((tag) => tag.id === saved.id ? saved : tag) : [saved, ...current]);
+      } else {
+        const provider = providers.find((item) => item.id === selectedProviderId); if (!provider) throw new Error('Seleccione un proveedor activo');
+        const tag = editingTagId ? tags.find((item) => item.id === editingTagId) : await createNfcTag(token, { code: uid, employeeId: null, purpose: 'GENERAL' }); if (!tag) throw new Error('TAG no encontrado');
+        await updatePermanentProvider(token, provider.id, { identification: provider.identification, name: provider.name, company: provider.company, phone: provider.phone, active: provider.active, vehiclePlates: provider.vehicles.map((item) => item.plate), nfcTagIds: [...new Set([...provider.tags.map((item) => item.id), tag.id])] });
+        const [tagData, providerData] = await Promise.all([getNfcTags(token), getPermanentProviders(token)]); setTags(tagData); setProviders(providerData);
+      }
+      setUid(''); setSelectedEmployeeId(''); setSelectedProviderId(''); setEditingTagId(null);
+      setMessage(`TAG ${editingTagId ? 'reasignado' : 'asignado'} correctamente.`);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'No fue posible asignar el TAG'); }
     finally { setLoading(false); }
   }
 
   function startEditing(tag: NfcTagRecord) {
-    setEditingTagId(tag.id); setUid(tag.code); setSelectedEmployeeId(tag.employeeId ?? ''); setError(''); setMessage('');
+    setEditingTagId(tag.id); setUid(tag.code); setSelectedEmployeeId(tag.employeeId ?? ''); setSelectedProviderId(tag.providerAssignment?.id ?? ''); setTarget(tag.providerAssignment ? 'PROVEEDOR' : 'FUNCIONARIO'); setError(''); setMessage('');
   }
 
   function cancelEditing() {
-    setEditingTagId(null); setUid(''); setSelectedEmployeeId(''); setError('');
+    setEditingTagId(null); setUid(''); setSelectedEmployeeId(''); setSelectedProviderId(''); setError('');
   }
 
   function unassign(tag: NfcTagRecord) {
@@ -71,6 +85,17 @@ export default function NfcTagAdministrationScreen() {
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Liberar', style: 'destructive', onPress: () => void (async () => {
         try { const updated = await updateNfcTag(token, tag.id, { employeeId: null }); setTags((current) => current.map((item) => item.id === updated.id ? updated : item)); setMessage('TAG liberado.'); }
+        catch (reason) { setError(reason instanceof Error ? reason.message : 'No fue posible liberar el TAG'); }
+      })() },
+    ]);
+  }
+
+  function unassignProvider(tag: NfcTagRecord) {
+    const provider = providers.find((item) => item.id === tag.providerAssignment?.id); if (!provider) return;
+    Alert.alert('Liberar TAG', `¿Desea quitar ${tag.code} de ${provider.name}?`, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Liberar', style: 'destructive', onPress: () => void (async () => {
+        try { await updatePermanentProvider(token, provider.id, { identification: provider.identification, name: provider.name, company: provider.company, phone: provider.phone, active: provider.active, vehiclePlates: provider.vehicles.map((item) => item.plate), nfcTagIds: provider.tags.filter((item) => item.id !== tag.id).map((item) => item.id) }); const [tagData, providerData] = await Promise.all([getNfcTags(token), getPermanentProviders(token)]); setTags(tagData); setProviders(providerData); setMessage('TAG liberado del proveedor.'); }
         catch (reason) { setError(reason instanceof Error ? reason.message : 'No fue posible liberar el TAG'); }
       })() },
     ]);
@@ -92,7 +117,7 @@ export default function NfcTagAdministrationScreen() {
     <ScrollView contentContainerStyle={styles.content}>
       <Text style={styles.eyebrow}>GESTIÓN DE IDENTIFICACIÓN</Text>
       <Text style={styles.title}>{editingTagId ? 'Reasignar TAG NFC' : 'Asignar TAG NFC'}</Text>
-      <Text style={styles.description}>Lea el gafete con este teléfono y asígnelo a un funcionario activo que todavía no tenga TAG.</Text>
+      <Text style={styles.description}>Lea el gafete con este teléfono y asígnelo a un funcionario o proveedor permanente.</Text>
 
       <View style={styles.scanCard}>
         <Text style={styles.label}>Etiqueta leída</Text>
@@ -104,24 +129,25 @@ export default function NfcTagAdministrationScreen() {
         {editingTagId && <Pressable onPress={cancelEditing} style={styles.secondaryButton}><Text style={styles.secondaryText}>Cancelar reasignación</Text></Pressable>}
       </View>
 
-      <Text style={styles.sectionTitle}>Funcionario sin TAG asignado</Text>
+      <Text style={styles.sectionTitle}>Tipo de asignación</Text><View style={styles.tagActions}><Pressable onPress={() => { setTarget('FUNCIONARIO'); setSelectedProviderId(''); }} style={[styles.smallButton,target==='FUNCIONARIO'&&styles.employeeSelected]}><Text style={styles.smallButtonText}>Funcionario</Text></Pressable><Pressable onPress={() => { setTarget('PROVEEDOR'); setSelectedEmployeeId(''); }} style={[styles.smallButton,target==='PROVEEDOR'&&styles.employeeSelected]}><Text style={styles.smallButtonText}>Proveedor</Text></Pressable></View>
+      {target === 'FUNCIONARIO' ? <><Text style={styles.sectionTitle}>Funcionario sin TAG asignado</Text>
       {loading && !employees.length ? <ActivityIndicator color={colors.primary} /> : availableEmployees.length === 0 ? <Text style={styles.empty}>No hay funcionarios activos disponibles para asignación.</Text> :
         <View style={styles.list}>{availableEmployees.map((employee) => <Pressable key={employee.id} onPress={() => setSelectedEmployeeId(employee.id)} style={[styles.employeeCard, selectedEmployeeId === employee.id && styles.employeeSelected]}>
           <View style={[styles.radio, selectedEmployeeId === employee.id && styles.radioSelected]} />
           <View style={styles.employeeText}><Text style={styles.employeeName}>{employee.name}</Text><Text style={styles.employeeDetail}>{employee.identification} · {employee.department}</Text></View>
-        </Pressable>)}</View>}
+        </Pressable>)}</View>}</> : <><Text style={styles.sectionTitle}>Proveedor permanente</Text><View style={styles.list}>{providers.filter((provider)=>provider.active).map((provider)=><Pressable key={provider.id} onPress={()=>setSelectedProviderId(provider.id)} style={[styles.employeeCard,selectedProviderId===provider.id&&styles.employeeSelected]}><View style={[styles.radio,selectedProviderId===provider.id&&styles.radioSelected]}/><View style={styles.employeeText}><Text style={styles.employeeName}>{provider.name}</Text><Text style={styles.employeeDetail}>{provider.company} · {provider.identification}</Text></View></Pressable>)}</View></>}
 
       {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
       {message ? <Text style={styles.success}>{message}</Text> : null}
-      <Pressable disabled={!uid || !selectedEmployeeId || loading} onPress={() => void assign()} style={[styles.primaryButton, (!uid || !selectedEmployeeId || loading) && styles.disabled]}>
+      <Pressable disabled={!uid || (target === 'FUNCIONARIO' ? !selectedEmployeeId : !selectedProviderId) || loading} onPress={() => void assign()} style={[styles.primaryButton, (!uid || (target === 'FUNCIONARIO' ? !selectedEmployeeId : !selectedProviderId) || loading) && styles.disabled]}>
         {loading && employees.length ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>{editingTagId ? 'Confirmar reasignación' : 'Confirmar asignación'}</Text>}
       </Pressable>
 
       <View style={styles.notice}><Text style={styles.noticeTitle}>Acceso exclusivo</Text><Text style={styles.noticeText}>Solo una cuenta con rol Administrador puede crear asociaciones. El personal de seguridad únicamente puede leer TAG registrados para operar movimientos.</Text></View>
       <Text style={styles.sectionTitle}>TAG registrados</Text>
       <View style={styles.list}>{tags.map((tag) => <View key={tag.id} style={styles.tagCard}>
-        <Text style={styles.tagCode}>{tag.code}</Text><Text style={styles.employeeDetail}>{tag.employee ? `${tag.employee.name} · ${tag.employee.identification}` : tag.active ? 'Disponible como gafete para visitantes' : 'Sin funcionario asignado'}</Text>
-        <View style={styles.tagActions}><Pressable onPress={() => startEditing(tag)} style={styles.smallButton}><Text style={styles.smallButtonText}>{tag.employeeId ? 'Reasignar' : 'Asignar'}</Text></Pressable>{tag.employeeId && <Pressable onPress={() => unassign(tag)} style={styles.smallButton}><Text style={styles.smallButtonText}>Liberar</Text></Pressable>}<Pressable disabled={Boolean(tag.employeeId)} onPress={() => remove(tag)} style={[styles.smallButton, tag.employeeId && styles.disabled]}><Text style={styles.dangerText}>Eliminar</Text></Pressable></View>
+        <Text style={styles.tagCode}>{tag.code}</Text><Text style={styles.employeeDetail}>{tag.employee ? `${tag.employee.name} · ${tag.employee.identification}` : tag.providerAssignment ? `${tag.providerAssignment.name} · Proveedor` : tag.purpose === 'VISITANTE' ? 'Gafete exclusivo para visitantes' : 'Disponible para asignación'}</Text>
+        {tag.purpose === 'GENERAL' ? <View style={styles.tagActions}><Pressable onPress={() => startEditing(tag)} style={styles.smallButton}><Text style={styles.smallButtonText}>{tag.employeeId || tag.providerAssignment ? 'Reasignar' : 'Asignar'}</Text></Pressable>{tag.employeeId && <Pressable onPress={() => unassign(tag)} style={styles.smallButton}><Text style={styles.smallButtonText}>Liberar</Text></Pressable>}{tag.providerAssignment && <Pressable onPress={() => unassignProvider(tag)} style={styles.smallButton}><Text style={styles.smallButtonText}>Liberar</Text></Pressable>}<Pressable disabled={Boolean(tag.employeeId || tag.providerAssignment)} onPress={() => remove(tag)} style={[styles.smallButton, Boolean(tag.employeeId || tag.providerAssignment) && styles.disabled]}><Text style={styles.dangerText}>Eliminar</Text></Pressable></View> : null}
       </View>)}</View>
     </ScrollView>
   </SafeAreaView>;

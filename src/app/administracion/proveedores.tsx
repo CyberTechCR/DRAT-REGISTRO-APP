@@ -5,28 +5,26 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useSession } from '@/auth/SessionContext';
 import { SICAFColors as colors } from '@/constants/theme';
-import { createNfcTag, createPermanentProvider, getNfcTags, getPermanentProviders, updatePermanentProvider, type NfcTagRecord, type PermanentProviderInput, type PermanentProviderRecord } from '@/services/api';
-import { readPhysicalNfcUid } from '@/services/nfc';
+import { createPermanentProvider, getPermanentProviders, updatePermanentProvider, type PermanentProviderInput, type PermanentProviderRecord } from '@/services/api';
 
 const emptyForm: PermanentProviderInput = { identification: '', name: '', company: '', phone: '', active: true, vehiclePlates: [], nfcTagIds: [] };
 
 export default function PermanentProvidersAdministrationScreen() {
   const { session } = useSession();
-  const [providers, setProviders] = useState<PermanentProviderRecord[]>([]); const [tags, setTags] = useState<NfcTagRecord[]>([]);
+  const [providers, setProviders] = useState<PermanentProviderRecord[]>([]);
   const [form, setForm] = useState(emptyForm); const [plates, setPlates] = useState(''); const [editingId, setEditingId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [scanning, setScanning] = useState(false); const [error, setError] = useState(''); const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [error, setError] = useState(''); const [message, setMessage] = useState('');
   const token = session?.token ?? '';
-  const load = useCallback(async () => { const [items, tagItems] = await Promise.all([getPermanentProviders(token), getNfcTags(token)]); setProviders(items); setTags(tagItems.filter((tag) => tag.purpose === 'GENERAL' && !tag.employeeId && tag.condition === 'OPERATIVO')); }, [token]);
+  const load = useCallback(async () => { setProviders(await getPermanentProviders(token)); }, [token]);
   useEffect(() => {
     if (!session || session.user.role !== 'ADMINISTRADOR') return;
-    Promise.all([getPermanentProviders(session.token), getNfcTags(session.token)])
-      .then(([items, tagItems]) => { setProviders(items); setTags(tagItems.filter((tag) => tag.purpose === 'GENERAL' && !tag.employeeId && tag.condition === 'OPERATIVO')); })
+    getPermanentProviders(session.token)
+      .then(setProviders)
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'No fue posible cargar los proveedores'))
       .finally(() => setLoading(false));
   }, [session]);
   if (!session) return <Redirect href={'/login' as Href}/>; if (session.user.role !== 'ADMINISTRADOR') return <Redirect href={'/' as Href}/>;
 
-  function toggleTag(id: string) { setForm((current) => ({ ...current, nfcTagIds: current.nfcTagIds.includes(id) ? current.nfcTagIds.filter((item) => item !== id) : [...current.nfcTagIds, id] })); }
   function edit(provider: PermanentProviderRecord) { setEditingId(provider.id); setForm({ identification: provider.identification, name: provider.name, company: provider.company, phone: provider.phone, active: provider.active, vehiclePlates: provider.vehicles.map((item) => item.plate), nfcTagIds: provider.tags.map((item) => item.id) }); setPlates(provider.vehicles.map((item) => item.plate).join(', ')); setError(''); setMessage(''); }
   async function save() {
     setSaving(true); setError(''); setMessage('');
@@ -34,16 +32,6 @@ export default function PermanentProvidersAdministrationScreen() {
     try { if (editingId) await updatePermanentProvider(token, editingId, input); else await createPermanentProvider(token, input); setMessage(editingId ? 'Proveedor actualizado.' : 'Proveedor creado.'); setEditingId(null); setForm(emptyForm); setPlates(''); await load(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'No fue posible guardar el proveedor'); } finally { setSaving(false); }
   }
-  async function scanProviderTag() {
-    setScanning(true); setError(''); setMessage('');
-    try {
-      const code = await readPhysicalNfcUid(); const tag = await createNfcTag(token, { code, employeeId: null, purpose: 'GENERAL' });
-      setTags((current) => [tag, ...current]); setForm((current) => ({ ...current, nfcTagIds: [...current.nfcTagIds, tag.id] }));
-      setMessage(`TAG ${tag.code} registrado y seleccionado para el proveedor.`);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'No fue posible registrar el TAG'); }
-    finally { setScanning(false); }
-  }
-  const selectableTags = tags.filter((tag) => tag.operationalStatus === 'DISPONIBLE' || form.nfcTagIds.includes(tag.id));
 
   return <SafeAreaView style={styles.screen}><View style={styles.header}><Pressable onPress={() => router.back()}><Text style={styles.back}>‹ Volver</Text></Pressable><Text style={styles.brand}>ADMINISTRACIÓN</Text></View><ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
     <Text style={styles.eyebrow}>ACCESO FRECUENTE</Text><Text style={styles.title}>Proveedores permanentes</Text><Text style={styles.description}>Administre proveedores frecuentes, sus vehículos y gafetes. Los ocasionales se registran como visitantes.</Text>
@@ -53,9 +41,7 @@ export default function PermanentProvidersAdministrationScreen() {
       <Text style={styles.label}>Empresa</Text><TextInput style={styles.input} value={form.company} onChangeText={(value) => setForm({ ...form, company: value })}/>
       <Text style={styles.label}>Teléfono o contacto</Text><TextInput style={styles.input} value={form.phone} onChangeText={(value) => setForm({ ...form, phone: value })}/>
       <Text style={styles.label}>Placas separadas por coma</Text><TextInput style={styles.input} autoCapitalize="characters" value={plates} onChangeText={setPlates} placeholder="ABC123, DEF456"/>
-      <Text style={styles.label}>Registrar un TAG nuevo para este proveedor</Text><Pressable disabled={scanning} onPress={() => void scanProviderTag()} style={[styles.secondary, scanning && styles.disabled]}>{scanning ? <ActivityIndicator color={colors.primary}/> : <Text style={styles.secondaryText}>Leer TAG NFC del proveedor</Text>}</Pressable>
-      {scanning ? <View style={styles.reading}><ActivityIndicator color={colors.primary}/><Text style={styles.readingText}>Lectura activa: acerque el TAG a la parte posterior del teléfono.</Text></View> : null}
-      <Text style={styles.label}>Gafetes NFC operativos y disponibles</Text><View style={styles.tagList}>{selectableTags.length === 0 ? <Text style={styles.muted}>No hay TAG disponibles.</Text> : selectableTags.map((tag) => <Pressable key={tag.id} onPress={() => toggleTag(tag.id)} style={[styles.tag, form.nfcTagIds.includes(tag.id) && styles.tagSelected]}><Text style={[styles.tagText, form.nfcTagIds.includes(tag.id) && styles.tagTextSelected]}>{tag.code}</Text></Pressable>)}</View>
+      <Text style={styles.muted}>Los TAG se asignan y liberan desde Administración → Administrar TAG NFC.</Text>
       <View style={styles.switchRow}><Text style={styles.labelInline}>Proveedor activo</Text><Switch value={form.active} onValueChange={(active) => setForm({ ...form, active })}/></View>
       <Pressable disabled={saving || !form.identification.trim() || !form.name.trim() || !form.company.trim() || !form.phone.trim()} onPress={() => void save()} style={[styles.primary, saving && styles.disabled]}>{saving ? <ActivityIndicator color="#fff"/> : <Text style={styles.primaryText}>{editingId ? 'Guardar cambios' : 'Crear proveedor'}</Text>}</Pressable>
       {editingId ? <Pressable onPress={() => { setEditingId(null); setForm(emptyForm); setPlates(''); }} style={styles.secondary}><Text style={styles.secondaryText}>Cancelar edición</Text></Pressable> : null}
