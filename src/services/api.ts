@@ -126,8 +126,18 @@ export async function getAvailableVisitorBadges(token: string) {
   return response.data;
 }
 
-export async function registerVisitorExit(token: string, visitId: string) {
-  const response = await apiRequest<{ data: ActiveVisitorVisit }>(`/api/v1/movements/visitors/${visitId}/exit`, { method: 'POST' }, token);
+export async function registerVisitorExit(token: string, visitId: string, badgeCode?: string) {
+  const response = await apiRequest<{ data: ActiveVisitorVisit & { badgeReturnPending?: boolean } }>(`/api/v1/movements/visitors/${visitId}/exit`, { method: 'POST', body: JSON.stringify(badgeCode ? { badgeCode } : {}) }, token);
+  return response.data;
+}
+
+export async function getPendingVisitorBadgeReturns(token: string) {
+  const response = await apiRequest<{ data: ActiveVisitorVisit[] }>('/api/v1/movements/visitors/badges/pending', {}, token);
+  return response.data;
+}
+
+export async function confirmVisitorBadgeReturn(token: string, visitId: string, badgeCode: string) {
+  const response = await apiRequest<{ data: ActiveVisitorVisit }>(`/api/v1/movements/visitors/${visitId}/badge-return`, { method: 'POST', body: JSON.stringify({ badgeCode }) }, token);
   return response.data;
 }
 
