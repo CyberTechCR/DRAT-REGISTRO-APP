@@ -19,6 +19,7 @@ export type Employee = { id: string; identification: string; name: string; depar
 export type NfcTagRecord = { id: string; code: string; employeeId: string | null; active: boolean; condition: 'OPERATIVO' | 'DANADO' | 'PERDIDO' | 'INACTIVO'; purpose: 'GENERAL' | 'VISITANTE'; operationalStatus: 'DISPONIBLE' | 'ASIGNADO' | 'DANADO' | 'PERDIDO' | 'INACTIVO'; visitorAssignment: { name: string } | null; providerAssignment: { id: string; name: string } | null; employee: Employee | null };
 export type PermanentProviderRecord = { id: string; identification: string; name: string; company: string; phone: string; active: boolean; vehicles: { id: string; plate: string; active: boolean }[]; tags: { id: string; code: string; active: boolean; condition: string }[] };
 export type PermanentProviderInput = { identification: string; name: string; company: string; phone: string; active: boolean; vehiclePlates: string[]; nfcTagIds: string[] };
+export type PermanentProviderMovementResolution = { provider: { providerId:string;identification:string;name:string;company:string;phone:string;active:boolean;vehicleId:string|null;plate:string|null;tagId:string|null;tagCode:string|null }; proposedMovement:'INGRESO'|'SALIDA'; lastMovement:{movementType:'INGRESO'|'SALIDA';occurredAt:string}|null };
 type InstitutionalVehicle = { id: string; plate: string; brand: string; model: string; year: number; fuelType: string; active: boolean; ownershipType: 'INSTITUCIONAL' };
 type PrivateVehicle = { id: string; plate: string; brand: string; model: string; color: string; active: boolean; ownershipType: 'PARTICULAR'; owner: Pick<Employee, 'id' | 'identification' | 'name' | 'active'> };
 
@@ -99,7 +100,7 @@ export async function getPresenceCount(token: string) {
   return response.data.count;
 }
 
-export type EmergencyPresenceRecord = { id: string; kind: 'FUNCIONARIO' | 'VISITANTE'; name: string; identification: string; detail: string; enteredAt: string };
+export type EmergencyPresenceRecord = { id: string; kind: 'FUNCIONARIO' | 'VISITANTE' | 'PROVEEDOR'; name: string; identification: string; detail: string; enteredAt: string };
 
 export async function getEmergencyPresence(token: string) {
   const response = await apiRequest<{ data: EmergencyPresenceRecord[] }>('/api/v1/movements/presence/emergency', {}, token);
@@ -238,6 +239,9 @@ export async function updatePermanentProvider(token: string, id: string, input: 
   const response = await apiRequest<{ data: PermanentProviderRecord }>(`/api/v1/catalogs/permanent-providers/${id}`, { method: 'PUT', body: JSON.stringify(input) }, token);
   return response.data;
 }
+
+export async function resolvePermanentProviderMovement(token:string,input:{code?:string;plate?:string}){const response=await apiRequest<{data:PermanentProviderMovementResolution}>('/api/v1/movements/permanent-providers/resolve',{method:'POST',body:JSON.stringify(input)},token);return response.data;}
+export async function confirmPermanentProviderMovement(token:string,input:{code?:string;plate?:string;movementType:'INGRESO'|'SALIDA'}){const response=await apiRequest<{data:unknown}>('/api/v1/movements/permanent-providers',{method:'POST',body:JSON.stringify(input)},token);return response.data;}
 
 export async function deleteNfcTag(token: string, id: string) {
   await apiRequest<void>(`/api/v1/catalogs/nfc-tags/${id}`, { method: 'DELETE' }, token);

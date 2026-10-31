@@ -13,6 +13,7 @@ const actions = [
   { id: 'institucional', icon: 'SOIN', title: 'Vehículo institucional', detail: 'Registrar salida o ingreso mediante boleta SOIN' },
   { id: 'visitante', icon: 'VIS', title: 'Registrar visitante', detail: 'Ingreso a pie y asignación de gafete' },
   { id: 'vehiculo-visitante', icon: 'VVE', title: 'Vehículo visitante', detail: 'Registrar placa y cada ocupante' },
+  { id: 'proveedor', icon: 'PRO', title: 'Proveedor permanente', detail: 'Identificar mediante TAG NFC o placa asociada' },
   { id: 'emergencia', icon: 'SOS', title: 'Lista de emergencia', detail: '38 personas dentro · disponible sin conexión' },
   { id: 'catalogos', icon: 'BUS', title: 'Consultar catálogos', detail: 'Funcionario, identificación o placa' },
 ] as const;
