@@ -101,6 +101,7 @@ export default function HomeScreen() {
                 <View style={styles.actionText}><Text style={styles.actionTitle}>Administrar TAG NFC</Text><Text style={styles.actionDetail}>Leer y asignar gafetes a funcionarios sin TAG</Text></View>
                 <Text style={styles.actionArrow}>›</Text>
               </Pressable>}
+              {session.user.role === 'ADMINISTRADOR' && <Pressable accessibilityRole="button" accessibilityLabel="Administrar gafetes de visitantes" onPress={() => router.navigate('/administracion/gafetes-visitantes' as Href)} style={({ pressed }) => [styles.adminCard, pressed && styles.actionPressed]}><View style={styles.adminIcon}><Text style={styles.actionIconText}>GV</Text></View><View style={styles.actionText}><Text style={styles.actionTitle}>Gafetes de visitantes</Text><Text style={styles.actionDetail}>Registrar TAG temporales para visitas</Text></View><Text style={styles.actionArrow}>›</Text></Pressable>}
             </View>
 
             <View style={styles.notice}>

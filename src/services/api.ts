@@ -207,7 +207,7 @@ export async function getNfcTags(token: string) {
   return response.data;
 }
 
-export async function createNfcTag(token: string, input: { code: string; employeeId: string }) {
+export async function createNfcTag(token: string, input: { code: string; employeeId?: string | null }) {
   const response = await apiRequest<{ data: NfcTagRecord }>('/api/v1/catalogs/nfc-tags', { method: 'POST', body: JSON.stringify(input) }, token);
   return response.data;
 }
