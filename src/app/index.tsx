@@ -12,6 +12,7 @@ const actions = [
   { id: 'vehiculo', icon: 'PLA', title: 'Vehículo particular', detail: 'Buscar placa, conductor y acompañantes' },
   { id: 'institucional', icon: 'SOIN', title: 'Vehículo institucional', detail: 'Registrar salida o ingreso mediante boleta SOIN' },
   { id: 'visitante', icon: 'VIS', title: 'Registrar visitante', detail: 'Ingreso a pie y asignación de gafete' },
+  { id: 'vehiculo-visitante', icon: 'VVE', title: 'Vehículo visitante', detail: 'Registrar placa y cada ocupante' },
   { id: 'emergencia', icon: 'SOS', title: 'Lista de emergencia', detail: '38 personas dentro · disponible sin conexión' },
   { id: 'catalogos', icon: 'BUS', title: 'Consultar catálogos', detail: 'Funcionario, identificación o placa' },
 ] as const;

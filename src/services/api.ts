@@ -131,6 +131,13 @@ export async function registerVisitorExit(token: string, visitId: string) {
   return response.data;
 }
 
+export type VisitorVehicleOccupantInput = { identification: string; name: string; reason: string; badgeCode: string; role: 'CONDUCTOR' | 'OCUPANTE' };
+
+export async function registerVisitorVehicleEntry(token: string, input: { plate: string; occupants: VisitorVehicleOccupantInput[] }) {
+  const response = await apiRequest<{ data: { id: string; plate: string; entryAt: string; occupants: VisitorVehicleOccupantInput[] } }>('/api/v1/movements/visitor-vehicles/entry', { method: 'POST', body: JSON.stringify(input) }, token);
+  return response.data;
+}
+
 export type PrivateVehicleMovementResolution = {
   vehicle: { id: string; plate: string; brand: string; model: string; color: string };
   habitualDriver: Employee;

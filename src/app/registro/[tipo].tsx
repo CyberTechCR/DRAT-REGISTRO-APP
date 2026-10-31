@@ -8,6 +8,7 @@ import { useSession } from '@/auth/SessionContext';
 import { confirmInstitutionalDeparture, confirmInstitutionalReturn, confirmManualMovement, confirmNfcMovement, confirmPrivateVehicleMovement, getActiveVisitorVisits, getAvailableVisitorBadges, getEmergencyPresence, getPresenceCount, lookupVisitorIdentity, registerVisitorEntry, registerVisitorExit, resolveInstitutionalDeparture, resolveInstitutionalReturn, resolveManualMovement, resolveNfcMovement, resolvePrivateVehicleMovement, searchActiveEmployees, type ActiveVisitorVisit, type Employee, type EmergencyPresenceRecord, type InstitutionalTrip, type ManualMovementResolution, type NfcMovementResolution, type PrivateVehicleMovementResolution } from '@/services/api';
 import { readPhysicalNfcUid } from '@/services/nfc';
 import { PlateOcrScanner } from '@/components/plate-ocr-scanner';
+import { VisitorVehicleEntryScreen } from '@/components/visitor-vehicle-entry';
 
 const processNames: Record<string, string> = {
   nfc: 'Escanear TAG NFC',
@@ -23,6 +24,7 @@ export default function RegistrationScreen() {
   if (tipo === 'vehiculo') return <PrivateVehicleMovementScreen />;
   if (tipo === 'institucional') return <InstitutionalVehicleMovementScreen />;
   if (tipo === 'visitante') return <VisitorMovementScreen />;
+  if (tipo === 'vehiculo-visitante') return <VisitorVehicleEntryScreen />;
   if (tipo === 'emergencia') return <EmergencyPresenceScreen />;
   const title = processNames[tipo] ?? 'Proceso SICAF';
 
@@ -217,7 +219,7 @@ function PrivateVehicleMovementScreen() {
     <ScrollView contentContainerStyle={styles.nfcContent} keyboardShouldPersistTaps="handled">
       <Text style={styles.eyebrow}>MOVIMIENTO VEHICULAR</Text><Text style={styles.title}>Vehículo particular</Text><Text style={styles.description}>Ingrese la placa para identificar el vehículo y su conductor habitual. El reconocimiento por cámara se conectará posteriormente.</Text>
       {!resolution && <><Pressable disabled={loading} onPress={() => setOcrOpen(true)} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Escanear placa con cámara</Text></Pressable><View style={styles.methodDivider}><View style={styles.dividerLine}/><Text style={styles.dividerText}>O INGRESO MANUAL</Text><View style={styles.dividerLine}/></View><Text style={styles.fieldLabel}>Placa</Text><TextInput autoCapitalize="characters" placeholder="Ejemplo: ABC123" placeholderTextColor={colors.muted} value={plate} onChangeText={(value) => { setPlate(value); setPlateSource('PLACA_MANUAL'); }} style={styles.input} onSubmitEditing={() => void findVehicle()} /><Pressable disabled={loading} onPress={() => void findVehicle()} style={styles.cancelButton}>{loading ? <ActivityIndicator color={colors.primary} /> : <Text style={styles.cancelText}>Buscar placa escrita</Text>}</Pressable></>}
-      {unknownPlate && <Pressable onPress={() => router.replace({ pathname: '/registro/[tipo]', params: { tipo: 'visitante' } })} style={styles.cancelButton}><Text style={styles.cancelText}>Continuar con flujo de visitantes</Text></Pressable>}
+      {unknownPlate && <Pressable onPress={() => router.replace({ pathname: '/registro/[tipo]', params: { tipo: 'vehiculo-visitante' } })} style={styles.cancelButton}><Text style={styles.cancelText}>Registrar como vehículo visitante</Text></Pressable>}
       {resolution && <View style={styles.confirmCard}>
         <Text style={styles.confirmLabel}>VEHÍCULO IDENTIFICADO</Text><Text style={styles.employeeName}>{resolution.vehicle.plate}</Text><Text style={styles.employeeDetail}>{resolution.vehicle.brand} {resolution.vehicle.model} · {resolution.vehicle.color}</Text>
         <View style={[styles.movementBadge, resolution.proposedMovement === 'SALIDA' && styles.exitBadge]}><Text style={styles.movementText}>Movimiento propuesto: {resolution.proposedMovement}</Text></View>
