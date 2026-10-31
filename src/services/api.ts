@@ -16,7 +16,7 @@ export async function getApiHealth(signal?: AbortSignal): Promise<ApiHealth> {
 }
 
 export type Employee = { id: string; identification: string; name: string; department: string; position: string; active: boolean };
-export type NfcTagRecord = { id: string; code: string; employeeId: string | null; active: boolean; employee: Employee | null };
+export type NfcTagRecord = { id: string; code: string; employeeId: string | null; active: boolean; condition: 'OPERATIVO' | 'DANADO' | 'PERDIDO' | 'INACTIVO'; operationalStatus: 'DISPONIBLE' | 'ASIGNADO' | 'DANADO' | 'PERDIDO' | 'INACTIVO'; visitorAssignment: { name: string } | null; employee: Employee | null };
 type InstitutionalVehicle = { id: string; plate: string; brand: string; model: string; year: number; fuelType: string; active: boolean; ownershipType: 'INSTITUCIONAL' };
 type PrivateVehicle = { id: string; plate: string; brand: string; model: string; color: string; active: boolean; ownershipType: 'PARTICULAR'; owner: Pick<Employee, 'id' | 'identification' | 'name' | 'active'> };
 
@@ -212,8 +212,13 @@ export async function createNfcTag(token: string, input: { code: string; employe
   return response.data;
 }
 
-export async function updateNfcTag(token: string, id: string, input: { employeeId?: string | null; active?: boolean }) {
+export async function updateNfcTag(token: string, id: string, input: { employeeId?: string | null; active?: boolean; condition?: NfcTagRecord['condition'] }) {
   const response = await apiRequest<{ data: NfcTagRecord }>(`/api/v1/catalogs/nfc-tags/${id}`, { method: 'PATCH', body: JSON.stringify(input) }, token);
+  return response.data;
+}
+
+export async function getNfcTagHistory(token: string, id: string) {
+  const response = await apiRequest<{ data: { id: string; event: string; detail: string; occurredAt: string; changedBy: string }[] }>(`/api/v1/catalogs/nfc-tags/${id}/history`, {}, token);
   return response.data;
 }
 
