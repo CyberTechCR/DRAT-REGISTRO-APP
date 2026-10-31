@@ -109,12 +109,13 @@ export async function getEmergencyPresence(token: string) {
   return response.data;
 }
 
-export type ActiveVisitorVisit = { id: string; identification: string; name: string; reason: string; badgeCode: string; entryAt: string };
+export type ActiveVisitorVisit = { id: string; identification: string; name: string; reason: string; badgeCode: string | null; entryAt: string };
 
 export async function registerVisitorEntry(token: string, input: { identification: string; name: string; reason: string; badgeCode: string }) {
   const response = await apiRequest<{ data: ActiveVisitorVisit }>('/api/v1/movements/visitors/entry', { method: 'POST', body: JSON.stringify(input) }, token);
   return response.data;
 }
+export async function registerVisitorEntryWithoutBadge(token:string,input:{identification:string;name:string;reason:string;observation:string;confirmed:boolean}){const response=await apiRequest<{data:ActiveVisitorVisit}>('/api/v1/movements/visitors/entry/badge-contingency',{method:'POST',body:JSON.stringify(input)},token);return response.data;}
 
 export async function getActiveVisitorVisits(token: string, search = '') {
   const response = await apiRequest<{ data: ActiveVisitorVisit[] }>(`/api/v1/movements/visitors/active?search=${encodeURIComponent(search.trim())}`, {}, token);
