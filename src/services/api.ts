@@ -184,7 +184,7 @@ export type InstitutionalTrip = {
   assets: InstitutionalTripAsset[];
 };
 
-export type InstitutionalTripAsset = { id?: string; description: string; quantity: number; identifier?: string | null; observation?: string | null };
+export type InstitutionalTripAsset = { id?: string; description: string; quantity: number; identifier?: string | null; observation?: string | null; returnedQuantity?: number | null; returnObservation?: string | null; verifiedAt?: string | null };
 
 export async function resolveInstitutionalDeparture(token: string, plate: string) {
   const response = await apiRequest<{ data: { vehicle: InstitutionalVehicle & { assetCode: string } } }>('/api/v1/movements/institutional-vehicles/departure/resolve', { method: 'POST', body: JSON.stringify({ plate }) }, token);
@@ -201,7 +201,7 @@ export async function resolveInstitutionalReturn(token: string, soinNumber: stri
   return response.data;
 }
 
-export async function confirmInstitutionalReturn(token: string, input: { soinNumber: string; mileage: number; fuel: number }) {
+export async function confirmInstitutionalReturn(token: string, input: { soinNumber: string; mileage: number; fuel: number; assets: { id: string; returnedQuantity: number; observation?: string }[] }) {
   const response = await apiRequest<{ data: InstitutionalTrip }>('/api/v1/movements/institutional-vehicles/return', { method: 'POST', body: JSON.stringify(input) }, token);
   return response.data;
 }
