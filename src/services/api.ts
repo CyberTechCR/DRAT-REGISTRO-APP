@@ -141,6 +141,11 @@ export async function confirmVisitorBadgeReturn(token: string, visitId: string, 
   return response.data;
 }
 
+export async function resolveLegacyVisitorBadgeAlert(token: string, visitId: string) {
+  const response = await apiRequest<{ data: ActiveVisitorVisit }>(`/api/v1/movements/visitors/${visitId}/badge-return/legacy-resolution`, { method: 'POST', body: JSON.stringify({}) }, token);
+  return response.data;
+}
+
 export type VisitorVehicleOccupantInput = { identification: string; name: string; reason: string; badgeCode: string; role: 'CONDUCTOR' | 'OCUPANTE' };
 
 export async function registerVisitorVehicleEntry(token: string, input: { plate: string; occupants: VisitorVehicleOccupantInput[] }) {
