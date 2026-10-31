@@ -92,8 +92,8 @@ export async function resolveManualMovement(token: string, employeeId: string) {
   return response.data;
 }
 
-export async function confirmManualMovement(token: string, employeeId: string, movementType: 'INGRESO' | 'SALIDA') {
-  const response = await apiRequest<{ data: { id: string; movementType: 'INGRESO' | 'SALIDA'; occurredAt: string } }>('/api/v1/movements/employees/manual', { method: 'POST', body: JSON.stringify({ employeeId, movementType }) }, token);
+export async function confirmManualMovement(token: string, employeeId: string, movementType: 'INGRESO' | 'SALIDA', reason: string) {
+  const response = await apiRequest<{ data: { id: string; movementType: 'INGRESO' | 'SALIDA'; occurredAt: string } }>('/api/v1/movements/employees/manual', { method: 'POST', body: JSON.stringify({ employeeId, movementType, reason }) }, token);
   return response.data;
 }
 
@@ -171,7 +171,7 @@ export async function resolvePrivateVehicleMovement(token: string, plate: string
   return response.data;
 }
 
-export async function confirmPrivateVehicleMovement(token: string, input: { plate: string; driverEmployeeId?: string; driverVisitorVisitId?: string; ownerAuthorizationConfirmed?: boolean; authorizationNote?: string; occupantEmployeeIds: string[]; movementType: 'INGRESO' | 'SALIDA'; source?: 'PLACA_MANUAL' | 'OCR' }) {
+export async function confirmPrivateVehicleMovement(token: string, input: { plate: string; driverEmployeeId?: string; driverVisitorVisitId?: string; ownerAuthorizationConfirmed?: boolean; authorizationNote?: string; occupantEmployeeIds: string[]; movementType: 'INGRESO' | 'SALIDA'; source?: 'PLACA_MANUAL' | 'OCR'; manualReason?: string }) {
   const response = await apiRequest<{ data: { id: string; movementType: 'INGRESO' | 'SALIDA'; occurredAt: string } }>('/api/v1/movements/private-vehicles', { method: 'POST', body: JSON.stringify({ ...input, source: input.source ?? 'PLACA_MANUAL' }) }, token);
   return response.data;
 }
