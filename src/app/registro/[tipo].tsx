@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { SICAFColors as colors } from '@/constants/theme';
 import { useSession } from '@/auth/SessionContext';
-import { confirmInstitutionalDeparture, confirmInstitutionalReturn, confirmManualMovement, confirmNfcMovement, confirmPermanentProviderMovement, confirmPrivateVehicleMovement, confirmVisitorBadgeReturn, getActiveVisitorVisits, getAvailableVisitorBadges, getEmergencyPresence, getPendingVisitorBadgeReturns, getPresenceCount, lookupVisitorIdentity, registerVisitorEntry, registerVisitorExit, resolveInstitutionalDeparture, resolveInstitutionalReturn, resolveLegacyVisitorBadgeAlert, resolveManualMovement, resolveNfcMovement, resolvePermanentProviderMovement, resolvePrivateVehicleMovement, searchActiveEmployees, type ActiveVisitorVisit, type Employee, type EmergencyPresenceRecord, type InstitutionalTrip, type ManualMovementResolution, type NfcMovementResolution, type PermanentProviderMovementResolution, type PrivateVehicleMovementResolution } from '@/services/api';
+import { ApiRequestError, confirmInstitutionalDeparture, confirmInstitutionalReturn, confirmManualMovement, confirmNfcMovement, confirmPermanentProviderMovement, confirmPrivateVehicleMovement, confirmVisitorBadgeReturn, createVehicleExceptionAuthorization, getActiveVisitorVisits, getAvailableVisitorBadges, getEmergencyPresence, getPendingVisitorBadgeReturns, getPresenceCount, lookupVisitorIdentity, registerVisitorEntry, registerVisitorExit, resolveInstitutionalDeparture, resolveInstitutionalReturn, resolveLegacyVisitorBadgeAlert, resolveManualMovement, resolveNfcMovement, resolvePermanentProviderMovement, resolvePrivateVehicleMovement, searchActiveEmployees, type ActiveVisitorVisit, type Employee, type EmergencyPresenceRecord, type InstitutionalTrip, type ManualMovementResolution, type NfcMovementResolution, type PermanentProviderMovementResolution, type PrivateVehicleMovementResolution } from '@/services/api';
 import { readPhysicalNfcUid } from '@/services/nfc';
 import { PlateOcrScanner } from '@/components/plate-ocr-scanner';
 import { VisitorVehicleEntryScreen } from '@/components/visitor-vehicle-entry';
@@ -168,18 +168,21 @@ function PrivateVehicleMovementScreen() {
   const [unknownPlate, setUnknownPlate] = useState(false);
   const [ocrOpen, setOcrOpen] = useState(false);
   const [plateSource, setPlateSource] = useState<'PLACA_MANUAL' | 'OCR'>('PLACA_MANUAL');
+  const [exception, setException] = useState<{entityId:string;movementType:'INGRESO'|'SALIDA'}|null>(null);
+  const [exceptionReason,setExceptionReason]=useState('');const[authorizedByReference,setAuthorizedByReference]=useState('');const[exceptionObservations,setExceptionObservations]=useState('');
 
   if (!session) return <Redirect href={'/login' as Href} />;
 
   async function findVehicle(approvedPlate = plate) {
     if (!approvedPlate.trim()) { setError('Ingrese la placa del vehículo.'); return; }
-    setLoading(true); setError(''); setSuccess(''); setUnknownPlate(false);
+    setLoading(true); setError(''); setSuccess(''); setUnknownPlate(false); setException(null);
     try {
       const found = await resolvePrivateVehicleMovement(session!.token, approvedPlate);
       setResolution(found); setPlate(found.vehicle.plate); setDriver(found.habitualDriver); setVisitorDriver(null); setOccupants([]); setResults([]); setVisitorResults([]); setAuthorizationConfirmed(false); setAuthorizationNote('');
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : 'No fue posible consultar la placa';
       setError(message); setUnknownPlate(message.toLowerCase().includes('desconocida'));
+      if(reason instanceof ApiRequestError&&reason.details?.code==='VEHICLE_AUTHORIZATION_REQUIRED'&&reason.details.entityId&&reason.details.requestedMovement)setException({entityId:reason.details.entityId,movementType:reason.details.requestedMovement});
     } finally { setLoading(false); }
   }
 
@@ -229,9 +232,10 @@ function PrivateVehicleMovementScreen() {
       const count = await getPresenceCount(session!.token);
       setSuccess(`${resolution.proposedMovement === 'INGRESO' ? 'Ingreso' : 'Salida'} del vehículo registrado. Aforo actual: ${count}.`);
       setResolution(null); setDriver(null); setVisitorDriver(null); setOccupants([]); setPlate(''); setAuthorizationConfirmed(false); setAuthorizationNote('');
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'No fue posible registrar el movimiento'); }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'No fue posible registrar el movimiento'); if(reason instanceof ApiRequestError&&reason.details?.code==='MOVEMENT_INCONSISTENCY'&&reason.details.entityId&&reason.details.requestedMovement)setException({entityId:reason.details.entityId,movementType:reason.details.requestedMovement}); }
     finally { setLoading(false); }
   }
+  async function confirmException(){if(!exception)return;setLoading(true);setError('');try{await createVehicleExceptionAuthorization(session!.token,{entityId:exception.entityId,movementType:exception.movementType,reason:exceptionReason,authorizedByReference,observations:exceptionObservations});const count=await getPresenceCount(session!.token);setSuccess(`Ingreso excepcional autorizado y registrado. Aforo actual: ${count}.`);setException(null);setResolution(null);setPlate('');setExceptionReason('');setAuthorizedByReference('');setExceptionObservations('');}catch(reason){setError(reason instanceof Error?reason.message:'No fue posible registrar la autorización');}finally{setLoading(false);}}
 
   return <SafeAreaView style={styles.screen}>
     <View style={styles.header}><Pressable onPress={() => router.back()} style={styles.backButton}><Text style={styles.backText}>‹ Volver</Text></Pressable><Text style={styles.brand}>SICAF · DRAT</Text></View>
@@ -254,8 +258,9 @@ function PrivateVehicleMovementScreen() {
         <TextInput placeholder="Nombre o identificación" placeholderTextColor={colors.muted} value={search} onChangeText={setSearch} style={styles.input} onFocus={() => { if (selectionMode !== 'DRIVER') setSelectionMode('OCCUPANT'); }} onSubmitEditing={() => void findPeople()} />
         <Pressable disabled={loading} onPress={() => void findPeople()} style={styles.cancelButton}><Text style={styles.cancelText}>Buscar {selectionMode === 'DRIVER' ? 'conductor' : 'acompañante'}</Text></Pressable>
         <View style={styles.employeeResults}>{results.map((employee) => <Pressable key={employee.id} onPress={() => selectPerson(employee)} style={styles.employeeResult}><Text style={styles.employeeResultName}>{employee.name}</Text><Text style={styles.employeeDetail}>{employee.identification} · {employee.department}</Text><Text style={styles.selectText}>Seleccionar ›</Text></Pressable>)}</View>
-        <Text style={styles.confirmQuestion}>¿Confirma el movimiento del vehículo y sus ocupantes?</Text><Pressable disabled={loading || (!driver && !visitorDriver)} onPress={() => void confirm()} style={styles.primaryButton}>{loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Confirmar {resolution.proposedMovement.toLowerCase()}</Text>}</Pressable><Pressable onPress={() => { setResolution(null); setDriver(null); setVisitorDriver(null); setOccupants([]); setResults([]); }} style={styles.cancelButton}><Text style={styles.cancelText}>Cancelar operación</Text></Pressable>
+        <Text style={styles.confirmQuestion}>¿Confirma el movimiento del vehículo y sus ocupantes?</Text><Pressable disabled={loading || (!driver && !visitorDriver) || Boolean(exception)} onPress={() => void confirm()} style={[styles.primaryButton,Boolean(exception)&&{opacity:.45}]}>{loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Confirmar {resolution.proposedMovement.toLowerCase()}</Text>}</Pressable><Pressable onPress={() => { setResolution(null); setDriver(null); setVisitorDriver(null); setOccupants([]); setResults([]); setException(null); }} style={styles.cancelButton}><Text style={styles.cancelText}>Cancelar operación</Text></Pressable>
       </View>}
+      {exception?<View style={styles.confirmCard}><Text style={styles.confirmLabel}>AUTORIZACIÓN EXCEPCIONAL REQUERIDA</Text><Text style={styles.description}>El flujo normal fue bloqueado. Registre únicamente una autorización que ya haya recibido de un responsable.</Text><Text style={styles.fieldLabel}>Motivo de la excepción</Text><TextInput value={exceptionReason} onChangeText={setExceptionReason} placeholder="Explique por qué se autoriza el ingreso" placeholderTextColor={colors.muted} style={styles.input}/><Text style={styles.fieldLabel}>Nombre o referencia de quien autoriza</Text><TextInput value={authorizedByReference} onChangeText={setAuthorizedByReference} placeholder="Nombre, cargo o referencia" placeholderTextColor={colors.muted} style={styles.input}/><Text style={styles.fieldLabel}>Observaciones</Text><TextInput value={exceptionObservations} onChangeText={setExceptionObservations} placeholder="Condiciones e indicaciones recibidas" placeholderTextColor={colors.muted} style={styles.input}/><Pressable disabled={loading||exceptionReason.trim().length<10||authorizedByReference.trim().length<2||exceptionObservations.trim().length<2} onPress={()=>void confirmException()} style={[styles.primaryButton,(loading||exceptionReason.trim().length<10||authorizedByReference.trim().length<2||exceptionObservations.trim().length<2)&&{opacity:.45}]}>{loading?<ActivityIndicator color="#fff"/>:<Text style={styles.primaryButtonText}>Registrar autorización y movimiento</Text>}</Pressable><Pressable onPress={()=>setException(null)} style={styles.cancelButton}><Text style={styles.cancelText}>Cancelar autorización</Text></Pressable></View>:null}
       {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}{success ? <Text style={styles.success}>{success}</Text> : null}
       <View style={styles.notice}><Text style={styles.noticeTitle}>Registro único</Text><Text style={styles.noticeText}>El conductor se registra una sola vez. Los acompañantes se agregan individualmente y una placa desconocida se envía al flujo de visitantes.</Text></View>
     </ScrollView>

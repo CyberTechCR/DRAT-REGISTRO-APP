@@ -22,6 +22,8 @@ export type PermanentProviderInput = { identification: string; name: string; com
 export type PermanentProviderMovementResolution = { provider: { providerId:string;identification:string;name:string;company:string;phone:string;active:boolean;vehicleId:string|null;plate:string|null;tagId:string|null;tagCode:string|null }; proposedMovement:'INGRESO'|'SALIDA'; lastMovement:{movementType:'INGRESO'|'SALIDA';occurredAt:string}|null };
 type InstitutionalVehicle = { id: string; plate: string; brand: string; model: string; year: number; fuelType: string; active: boolean; ownershipType: 'INSTITUCIONAL' };
 type PrivateVehicle = { id: string; plate: string; brand: string; model: string; color: string; active: boolean; ownershipType: 'PARTICULAR'; owner: Pick<Employee, 'id' | 'identification' | 'name' | 'active'> };
+export type ApiErrorDetails={authorizedRoute?:string;code?:string;entityType?:string;entityId?:string;requestedMovement?:'INGRESO'|'SALIDA'};
+export class ApiRequestError extends Error{details?:ApiErrorDetails;constructor(message:string,details?:ApiErrorDetails){super(message);this.name='ApiRequestError';this.details=details;}}
 
 async function apiRequest<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
   const headers = new Headers(init.headers);
@@ -29,10 +31,10 @@ async function apiRequest<T>(path: string, init: RequestInit = {}, token?: strin
   if (token) headers.set('Authorization', `Bearer ${token}`);
   const response = await fetch(`${env.apiUrl}${path}`, { ...init, headers });
   if (response.status === 204) return undefined as T;
-  const body = (await response.json()) as T & { error?: string; details?: { authorizedRoute?: string } };
+  const body = (await response.json()) as T & { error?: string; details?: ApiErrorDetails };
   if (!response.ok) {
     const message = body.error ?? `La API respondió con estado ${response.status}`;
-    throw new Error(body.details?.authorizedRoute ? `${message}. ${body.details.authorizedRoute}.` : message);
+    throw new ApiRequestError(body.details?.authorizedRoute ? `${message}. ${body.details.authorizedRoute}.` : message,body.details);
   }
   return body;
 }
@@ -242,6 +244,7 @@ export async function updatePermanentProvider(token: string, id: string, input: 
 
 export async function resolvePermanentProviderMovement(token:string,input:{code?:string;plate?:string}){const response=await apiRequest<{data:PermanentProviderMovementResolution}>('/api/v1/movements/permanent-providers/resolve',{method:'POST',body:JSON.stringify(input)},token);return response.data;}
 export async function confirmPermanentProviderMovement(token:string,input:{code?:string;plate?:string;movementType:'INGRESO'|'SALIDA'}){const response=await apiRequest<{data:unknown}>('/api/v1/movements/permanent-providers',{method:'POST',body:JSON.stringify(input)},token);return response.data;}
+export async function createVehicleExceptionAuthorization(token:string,input:{entityId:string;movementType:'INGRESO'|'SALIDA';reason:string;authorizedByReference:string;observations:string}){const response=await apiRequest<{data:unknown}>('/api/v1/movements/contingencies',{method:'POST',body:JSON.stringify({entityType:'VEHICULO_PARTICULAR',...input})},token);return response.data;}
 
 export async function deleteNfcTag(token: string, id: string) {
   await apiRequest<void>(`/api/v1/catalogs/nfc-tags/${id}`, { method: 'DELETE' }, token);
