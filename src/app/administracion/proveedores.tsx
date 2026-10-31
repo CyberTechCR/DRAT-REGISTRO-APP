@@ -15,11 +15,11 @@ export default function PermanentProvidersAdministrationScreen() {
   const [form, setForm] = useState(emptyForm); const [plates, setPlates] = useState(''); const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [error, setError] = useState(''); const [message, setMessage] = useState('');
   const token = session?.token ?? '';
-  const load = useCallback(async () => { const [items, tagItems] = await Promise.all([getPermanentProviders(token), getNfcTags(token)]); setProviders(items); setTags(tagItems.filter((tag) => !tag.employeeId && tag.condition === 'OPERATIVO')); }, [token]);
+  const load = useCallback(async () => { const [items, tagItems] = await Promise.all([getPermanentProviders(token), getNfcTags(token)]); setProviders(items); setTags(tagItems.filter((tag) => tag.purpose === 'GENERAL' && !tag.employeeId && tag.condition === 'OPERATIVO')); }, [token]);
   useEffect(() => {
     if (!session || session.user.role !== 'ADMINISTRADOR') return;
     Promise.all([getPermanentProviders(session.token), getNfcTags(session.token)])
-      .then(([items, tagItems]) => { setProviders(items); setTags(tagItems.filter((tag) => !tag.employeeId && tag.condition === 'OPERATIVO')); })
+      .then(([items, tagItems]) => { setProviders(items); setTags(tagItems.filter((tag) => tag.purpose === 'GENERAL' && !tag.employeeId && tag.condition === 'OPERATIVO')); })
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'No fue posible cargar los proveedores'))
       .finally(() => setLoading(false));
   }, [session]);

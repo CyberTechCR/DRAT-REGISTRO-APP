@@ -16,7 +16,7 @@ export async function getApiHealth(signal?: AbortSignal): Promise<ApiHealth> {
 }
 
 export type Employee = { id: string; identification: string; name: string; department: string; position: string; active: boolean };
-export type NfcTagRecord = { id: string; code: string; employeeId: string | null; active: boolean; condition: 'OPERATIVO' | 'DANADO' | 'PERDIDO' | 'INACTIVO'; operationalStatus: 'DISPONIBLE' | 'ASIGNADO' | 'DANADO' | 'PERDIDO' | 'INACTIVO'; visitorAssignment: { name: string } | null; providerAssignment: { name: string } | null; employee: Employee | null };
+export type NfcTagRecord = { id: string; code: string; employeeId: string | null; active: boolean; condition: 'OPERATIVO' | 'DANADO' | 'PERDIDO' | 'INACTIVO'; purpose: 'GENERAL' | 'VISITANTE'; operationalStatus: 'DISPONIBLE' | 'ASIGNADO' | 'DANADO' | 'PERDIDO' | 'INACTIVO'; visitorAssignment: { name: string } | null; providerAssignment: { name: string } | null; employee: Employee | null };
 export type PermanentProviderRecord = { id: string; identification: string; name: string; company: string; phone: string; active: boolean; vehicles: { id: string; plate: string; active: boolean }[]; tags: { id: string; code: string; active: boolean; condition: string }[] };
 export type PermanentProviderInput = { identification: string; name: string; company: string; phone: string; active: boolean; vehiclePlates: string[]; nfcTagIds: string[] };
 type InstitutionalVehicle = { id: string; plate: string; brand: string; model: string; year: number; fuelType: string; active: boolean; ownershipType: 'INSTITUCIONAL' };
@@ -209,7 +209,7 @@ export async function getNfcTags(token: string) {
   return response.data;
 }
 
-export async function createNfcTag(token: string, input: { code: string; employeeId?: string | null }) {
+export async function createNfcTag(token: string, input: { code: string; employeeId?: string | null; purpose?: 'GENERAL' | 'VISITANTE' }) {
   const response = await apiRequest<{ data: NfcTagRecord }>('/api/v1/catalogs/nfc-tags', { method: 'POST', body: JSON.stringify(input) }, token);
   return response.data;
 }
