@@ -9,6 +9,9 @@ import { ApiRequestError, confirmInstitutionalDeparture, confirmInstitutionalRet
 import { readPhysicalNfcUid } from '@/services/nfc';
 import { PlateOcrScanner } from '@/components/plate-ocr-scanner';
 import { VisitorVehicleEntryScreen } from '@/components/visitor-vehicle-entry';
+import { ConnectionBanner } from '@/components/connection-banner';
+import { useOffline } from '@/offline/OfflineProvider';
+import { applyOfflineEmployeeMovement, enqueueOperation, readCache, saveCache } from '@/offline/storage';
 
 const processNames: Record<string, string> = {
   nfc: 'Escanear TAG NFC',
@@ -76,14 +79,15 @@ function PermanentProviderMovementScreen(){
 
 function EmergencyPresenceScreen() {
   const { session } = useSession();
+  const { isOnline } = useOffline();
   const [people, setPeople] = useState<EmergencyPresenceRecord[]>([]);
   const [loading, setLoading] = useState(true); const [error, setError] = useState('');
-  useEffect(() => { if (!session) return; getEmergencyPresence(session.token).then(setPeople).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'No fue posible cargar la lista')).finally(() => setLoading(false)); }, [session]);
+  useEffect(() => { if (!session) return; getEmergencyPresence(session.token).then(async (data) => { setPeople(data); await saveCache('emergency-presence', data); }).catch(async () => { const cached = await readCache<EmergencyPresenceRecord[]>('emergency-presence'); if (cached) { setPeople(cached); setError('Mostrando la última lista guardada en el dispositivo.'); } else setError('No hay una lista local disponible. Conéctese una vez para sincronizarla.'); }).finally(() => setLoading(false)); }, [session]);
   if (!session) return <Redirect href={'/login' as Href} />;
-  return <SafeAreaView style={styles.screen}><View style={styles.header}><Pressable onPress={() => router.back()} style={styles.backButton}><Text style={styles.backText}>‹ Volver</Text></Pressable><Text style={styles.brand}>SICAF · DRAT</Text></View><ScrollView contentContainerStyle={styles.nfcContent}>
+  return <SafeAreaView style={styles.screen}><ConnectionBanner/><View style={styles.header}><Pressable onPress={() => router.back()} style={styles.backButton}><Text style={styles.backText}>‹ Volver</Text></Pressable><Text style={styles.brand}>SICAF · DRAT</Text></View><ScrollView contentContainerStyle={styles.nfcContent}>
     <Text style={styles.eyebrow}>CONTROL DE AFORO</Text><Text style={styles.title}>Lista de emergencia</Text><Text style={styles.description}>{people.length} {people.length === 1 ? 'persona dentro' : 'personas dentro'}. Incluye funcionarios y visitantes con ingreso vigente.</Text>
     {loading ? <ActivityIndicator color={colors.primary}/> : people.length === 0 ? <View style={styles.notice}><Text style={styles.noticeTitle}>Plantel sin personas registradas</Text><Text style={styles.noticeText}>Actualmente no existe ningún funcionario ni visitante con estado de ingreso.</Text></View> : people.map((person) => <View key={`${person.kind}-${person.id}`} style={styles.employeeResult}><Text style={styles.confirmLabel}>{person.kind}</Text><Text style={styles.employeeResultName}>{person.name}</Text><Text style={styles.employeeDetail}>{person.identification}</Text><Text style={styles.employeeDetail}>{person.detail}</Text><Text style={styles.employeeDetail}>Ingreso: {new Date(person.enteredAt).toLocaleString('es-CR')}</Text></View>)}
-    {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
+    {!isOnline ? <View style={styles.notice}><Text style={styles.noticeTitle}>Consulta local</Text><Text style={styles.noticeText}>Esta lista corresponde a la última sincronización y permanece disponible aunque cierre la aplicación.</Text></View> : null}{error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
   </ScrollView></SafeAreaView>;
 }
 
@@ -279,6 +283,7 @@ function PrivateVehicleMovementScreen() {
 
 function ManualEmployeeMovementScreen() {
   const { session } = useSession();
+  const { isOnline, refreshPending } = useOffline();
   const [search, setSearch] = useState('');
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [resolution, setResolution] = useState<ManualMovementResolution | null>(null);
@@ -292,16 +297,16 @@ function ManualEmployeeMovementScreen() {
   async function findEmployees() {
     if (!session || !search.trim()) { setError('Escriba el nombre o la identificación.'); return; }
     setLoading(true); setError(''); setSuccess('');
-    try { setEmployees(await searchActiveEmployees(session.token, search)); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'No fue posible buscar funcionarios'); }
+    try { const found = await searchActiveEmployees(session.token, search); setEmployees(found); await saveCache(`employees:${search.trim().toLowerCase()}`, found); }
+    catch (reason) { const cached = await readCache<Employee[]>(`employees:${search.trim().toLowerCase()}`); if (cached) { setEmployees(cached); setError('Sin conexión: resultados recuperados del almacenamiento local.'); } else setError(reason instanceof Error ? `${reason.message}. No existen resultados locales para esta búsqueda.` : 'No existen resultados locales para esta búsqueda.'); }
     finally { setLoading(false); }
   }
 
   async function selectEmployee(employee: Employee) {
     if (!session) return;
     setLoading(true); setError('');
-    try { setResolution(await resolveManualMovement(session.token, employee.id)); setEmployees([]); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'No fue posible validar al funcionario'); }
+    try { const result = await resolveManualMovement(session.token, employee.id); setResolution(result); await saveCache(`employee-resolution:${employee.id}`, result); setEmployees([]); }
+    catch (reason) { const cached = await readCache<ManualMovementResolution>(`employee-resolution:${employee.id}`); if (cached) { setResolution(cached); setEmployees([]); setError('Sin conexión: se propondrá el movimiento según el último estado sincronizado.'); } else setError(reason instanceof Error ? `${reason.message}. Este funcionario no está preparado para uso sin conexión.` : 'Este funcionario no está preparado para uso sin conexión.'); }
     finally { setLoading(false); }
   }
 
@@ -309,6 +314,13 @@ function ManualEmployeeMovementScreen() {
     if (!session || !resolution) return;
     setLoading(true); setError('');
     try {
+      if (!isOnline) {
+        await enqueueOperation('EMPLOYEE_MANUAL', { employeeId: resolution.employee.id, movementType: resolution.proposedMovement, reason: manualReason }, session.user);
+        await applyOfflineEmployeeMovement(resolution.employee, resolution.proposedMovement, `employee-resolution:${resolution.employee.id}`, resolution);
+        await refreshPending();
+        setSuccess(`${resolution.proposedMovement === 'INGRESO' ? 'Ingreso' : 'Salida'} guardado localmente a las ${new Date().toLocaleTimeString('es-CR')}. Se sincronizará al recuperar internet.`);
+        setResolution(null); setSearch(''); setManualReason(''); return;
+      }
       await confirmManualMovement(session.token, resolution.employee.id, resolution.proposedMovement, manualReason);
       const count = await getPresenceCount(session.token);
       setSuccess(`${resolution.proposedMovement === 'INGRESO' ? 'Ingreso' : 'Salida'} registrado. Aforo actual: ${count} ${count === 1 ? 'persona' : 'personas'}.`);
@@ -317,7 +329,7 @@ function ManualEmployeeMovementScreen() {
     finally { setLoading(false); }
   }
 
-  return <SafeAreaView style={styles.screen}>
+  return <SafeAreaView style={styles.screen}><ConnectionBanner/>
     <View style={styles.header}><Pressable onPress={() => router.back()} style={styles.backButton}><Text style={styles.backText}>‹ Volver</Text></Pressable><Text style={styles.brand}>SICAF · DRAT</Text></View>
     <ScrollView contentContainerStyle={styles.nfcContent} keyboardShouldPersistTaps="handled">
       <Text style={styles.eyebrow}>CONTROL DE AFORO</Text><Text style={styles.title}>Funcionario a pie</Text><Text style={styles.description}>Seleccione cómo desea identificar al funcionario: lectura de su TAG NFC o búsqueda manual autorizada.</Text>
@@ -334,6 +346,7 @@ function ManualEmployeeMovementScreen() {
 
 function NfcMovementScreen() {
   const { session } = useSession();
+  const { isOnline, refreshPending } = useOffline();
   const [code, setCode] = useState('');
   const [resolution, setResolution] = useState<NfcMovementResolution | null>(null);
   const [loading, setLoading] = useState(false);
@@ -346,8 +359,8 @@ function NfcMovementScreen() {
   async function resolveCode(value: string, nextSource: 'NFC_SIMULADO' | 'NFC_FISICO') {
     if (!session || !value.trim()) { setError('Ingrese el código de un TAG NFC.'); return; }
     setLoading(true); setError(''); setSuccess(''); setResolution(null);
-    try { setSource(nextSource); setCode(value); setResolution(await resolveNfcMovement(session.token, value)); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'No fue posible validar el TAG'); }
+    try { setSource(nextSource); setCode(value); const result = await resolveNfcMovement(session.token, value); setResolution(result); await saveCache(`nfc-resolution:${value.trim().toUpperCase()}`, result); }
+    catch (reason) { const cached = await readCache<NfcMovementResolution>(`nfc-resolution:${value.trim().toUpperCase()}`); if (cached) { setSource(nextSource); setCode(value); setResolution(cached); setError('Sin conexión: TAG validado con la última información sincronizada.'); } else setError(reason instanceof Error ? `${reason.message}. Este TAG no está disponible localmente.` : 'Este TAG no está disponible localmente.'); }
     finally { setLoading(false); }
   }
 
@@ -366,6 +379,13 @@ function NfcMovementScreen() {
     if (!session || !resolution) return;
     setLoading(true); setError('');
     try {
+      if (!isOnline) {
+        await enqueueOperation('EMPLOYEE_NFC', { code: resolution.tag.code, movementType: resolution.proposedMovement, source }, session.user);
+        await applyOfflineEmployeeMovement(resolution.employee, resolution.proposedMovement, `nfc-resolution:${resolution.tag.code.trim().toUpperCase()}`, resolution);
+        await refreshPending();
+        setSuccess(`${resolution.proposedMovement === 'INGRESO' ? 'Ingreso' : 'Salida'} guardado localmente para ${resolution.employee.name} a las ${new Date().toLocaleTimeString('es-CR')}.`);
+        setResolution(null); setCode(''); return;
+      }
       await confirmNfcMovement(session.token, resolution.tag.code, resolution.proposedMovement, source);
       setSuccess(`${resolution.proposedMovement === 'INGRESO' ? 'Ingreso' : 'Salida'} registrado correctamente para ${resolution.employee.name}.`);
       setResolution(null); setCode('');
@@ -373,7 +393,7 @@ function NfcMovementScreen() {
     finally { setLoading(false); }
   }
 
-  return <SafeAreaView style={styles.screen}>
+  return <SafeAreaView style={styles.screen}><ConnectionBanner/>
     <View style={styles.header}><Pressable onPress={() => router.back()} style={styles.backButton}><Text style={styles.backText}>‹ Volver</Text></Pressable><Text style={styles.brand}>SICAF · DRAT</Text></View>
     <ScrollView contentContainerStyle={styles.nfcContent} keyboardShouldPersistTaps="handled">
       <View style={styles.testBadge}><Text style={styles.testBadgeText}>LECTURA NFC FÍSICA</Text></View>

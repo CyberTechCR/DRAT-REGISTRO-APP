@@ -1,11 +1,13 @@
 import { Redirect, router, useFocusEffect, type Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { SICAFColors as colors } from '@/constants/theme';
 import { getApiHealth, getPresenceCount } from '@/services/api';
 import { useSession } from '@/auth/SessionContext';
+import { ConnectionBanner } from '@/components/connection-banner';
+import { useOffline } from '@/offline/OfflineProvider';
 
 const actions = [
   { id: 'peatonal', icon: 'PER', title: 'Funcionario a pie', detail: 'Identificación mediante TAG NFC o búsqueda manual' },
@@ -20,6 +22,7 @@ const actions = [
 
 export default function HomeScreen() {
   const { session, signOut } = useSession();
+  const { isOnline, pending, syncNow } = useOffline();
   const [apiConnected, setApiConnected] = useState<boolean | null>(null);
   const [presenceCount, setPresenceCount] = useState<number | null>(null);
 
@@ -32,15 +35,15 @@ export default function HomeScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => {
-    if (session) getPresenceCount(session.token).then(setPresenceCount).catch(() => setPresenceCount(null));
-  }, [session]));
+    if (session && isOnline) { void syncNow(session.token); getPresenceCount(session.token).then(setPresenceCount).catch(() => setPresenceCount(null)); }
+  }, [isOnline, session, syncNow]));
 
   if (!session) return <Redirect href={'/login' as Href} />;
 
   return (
     <View style={styles.screen}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <ConnectionBanner/><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
             <View style={styles.brandRow}>
               <View style={styles.brandMark}><Text style={styles.brandMarkText}>S</Text></View>
@@ -55,7 +58,7 @@ export default function HomeScreen() {
             <View style={styles.syncBadge}>
               <View style={styles.syncDot} />
               <Text style={styles.syncText}>
-                {apiConnected === null ? 'Comprobando API…' : apiConnected ? 'API conectada' : 'API sin conexión'}
+                {isOnline && apiConnected === null ? 'Comprobando API…' : isOnline && apiConnected ? `API conectada${pending ? ` · ${pending} pendiente(s)` : ''}` : 'Modo sin conexión activo'}
               </Text>
             </View>
           </View>
@@ -78,12 +81,11 @@ export default function HomeScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={action.title}
                   key={action.id}
-                  onPress={() => action.id === 'catalogos' ? router.navigate('/catalogos' as Href) :
-                    router.navigate({
+                  onPress={() => { if (!isOnline && action.id !== 'peatonal' && action.id !== 'emergencia') { Alert.alert('Función no disponible sin internet', 'En contingencia puede registrar funcionarios a pie y consultar la última lista de emergencia. Esta función requiere conexión para validar datos actuales.'); return; } if (action.id === 'catalogos') router.navigate('/catalogos' as Href); else router.navigate({
                       pathname: '/registro/[tipo]',
                       params: { tipo: action.id },
-                    })
-                  }
+                    });
+                  }}
                   style={({ pressed }) => [styles.actionCard, pressed && styles.actionPressed]}>
                   <View style={styles.actionIcon}><Text style={styles.actionIconText}>{action.icon}</Text></View>
                   <View style={styles.actionText}>
