@@ -102,6 +102,7 @@ export default function HomeScreen() {
                 <Text style={styles.actionArrow}>›</Text>
               </Pressable>}
               {session.user.role === 'ADMINISTRADOR' && <Pressable accessibilityRole="button" accessibilityLabel="Administrar gafetes de visitantes" onPress={() => router.navigate('/administracion/gafetes-visitantes' as Href)} style={({ pressed }) => [styles.adminCard, pressed && styles.actionPressed]}><View style={styles.adminIcon}><Text style={styles.actionIconText}>GV</Text></View><View style={styles.actionText}><Text style={styles.actionTitle}>Gafetes de visitantes</Text><Text style={styles.actionDetail}>Registrar TAG temporales para visitas</Text></View><Text style={styles.actionArrow}>›</Text></Pressable>}
+              {session.user.role === 'ADMINISTRADOR' && <Pressable accessibilityRole="button" accessibilityLabel="Administrar proveedores permanentes" onPress={() => router.navigate('/administracion/proveedores' as Href)} style={({ pressed }) => [styles.adminCard, pressed && styles.actionPressed]}><View style={styles.adminIcon}><Text style={styles.actionIconText}>PR</Text></View><View style={styles.actionText}><Text style={styles.actionTitle}>Proveedores permanentes</Text><Text style={styles.actionDetail}>Gestionar empresas, vehículos y gafetes</Text></View><Text style={styles.actionArrow}>›</Text></Pressable>}
             </View>
 
             <View style={styles.notice}>

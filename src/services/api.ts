@@ -16,7 +16,9 @@ export async function getApiHealth(signal?: AbortSignal): Promise<ApiHealth> {
 }
 
 export type Employee = { id: string; identification: string; name: string; department: string; position: string; active: boolean };
-export type NfcTagRecord = { id: string; code: string; employeeId: string | null; active: boolean; condition: 'OPERATIVO' | 'DANADO' | 'PERDIDO' | 'INACTIVO'; operationalStatus: 'DISPONIBLE' | 'ASIGNADO' | 'DANADO' | 'PERDIDO' | 'INACTIVO'; visitorAssignment: { name: string } | null; employee: Employee | null };
+export type NfcTagRecord = { id: string; code: string; employeeId: string | null; active: boolean; condition: 'OPERATIVO' | 'DANADO' | 'PERDIDO' | 'INACTIVO'; operationalStatus: 'DISPONIBLE' | 'ASIGNADO' | 'DANADO' | 'PERDIDO' | 'INACTIVO'; visitorAssignment: { name: string } | null; providerAssignment: { name: string } | null; employee: Employee | null };
+export type PermanentProviderRecord = { id: string; identification: string; name: string; company: string; phone: string; active: boolean; vehicles: { id: string; plate: string; active: boolean }[]; tags: { id: string; code: string; active: boolean; condition: string }[] };
+export type PermanentProviderInput = { identification: string; name: string; company: string; phone: string; active: boolean; vehiclePlates: string[]; nfcTagIds: string[] };
 type InstitutionalVehicle = { id: string; plate: string; brand: string; model: string; year: number; fuelType: string; active: boolean; ownershipType: 'INSTITUCIONAL' };
 type PrivateVehicle = { id: string; plate: string; brand: string; model: string; color: string; active: boolean; ownershipType: 'PARTICULAR'; owner: Pick<Employee, 'id' | 'identification' | 'name' | 'active'> };
 
@@ -219,6 +221,21 @@ export async function updateNfcTag(token: string, id: string, input: { employeeI
 
 export async function getNfcTagHistory(token: string, id: string) {
   const response = await apiRequest<{ data: { id: string; event: string; detail: string; occurredAt: string; changedBy: string }[] }>(`/api/v1/catalogs/nfc-tags/${id}/history`, {}, token);
+  return response.data;
+}
+
+export async function getPermanentProviders(token: string) {
+  const response = await apiRequest<{ data: PermanentProviderRecord[] }>('/api/v1/catalogs/permanent-providers', {}, token);
+  return response.data;
+}
+
+export async function createPermanentProvider(token: string, input: PermanentProviderInput) {
+  const response = await apiRequest<{ data: PermanentProviderRecord }>('/api/v1/catalogs/permanent-providers', { method: 'POST', body: JSON.stringify(input) }, token);
+  return response.data;
+}
+
+export async function updatePermanentProvider(token: string, id: string, input: PermanentProviderInput) {
+  const response = await apiRequest<{ data: PermanentProviderRecord }>(`/api/v1/catalogs/permanent-providers/${id}`, { method: 'PUT', body: JSON.stringify(input) }, token);
   return response.data;
 }
 
