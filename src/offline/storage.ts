@@ -35,6 +35,10 @@ export async function pendingCount() {
   return offlineDatabase.get<PendingOperation>('pending_operations').query(Q.where('status', 'PENDIENTE')).fetchCount();
 }
 
+export async function conflictOperations() {
+  return offlineDatabase.get<PendingOperation>('pending_operations').query(Q.where('status', 'CONFLICTO'), Q.sortBy('occurred_at', Q.desc)).fetch();
+}
+
 export async function pendingOperations() {
   return offlineDatabase.get<PendingOperation>('pending_operations').query(Q.where('status', 'PENDIENTE'), Q.sortBy('occurred_at', Q.asc)).fetch();
 }

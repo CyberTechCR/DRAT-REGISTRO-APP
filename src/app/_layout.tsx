@@ -10,11 +10,11 @@ SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   return (
-    <OfflineProvider><SessionProvider>
+    <SessionProvider><OfflineProvider>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <AnimatedSplashOverlay />
         <Stack screenOptions={{ headerShown: false }} />
       </ThemeProvider>
-    </SessionProvider></OfflineProvider>
+    </OfflineProvider></SessionProvider>
   );
 }

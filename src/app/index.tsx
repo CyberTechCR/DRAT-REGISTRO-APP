@@ -22,7 +22,7 @@ const actions = [
 
 export default function HomeScreen() {
   const { session, signOut } = useSession();
-  const { isOnline, pending, syncNow } = useOffline();
+  const { isOnline, pending, conflicts, syncNow } = useOffline();
   const [apiConnected, setApiConnected] = useState<boolean | null>(null);
   const [presenceCount, setPresenceCount] = useState<number | null>(null);
 
@@ -64,6 +64,7 @@ export default function HomeScreen() {
           </View>
 
           <View style={styles.body}>
+            {conflicts.length > 0 && <View style={styles.conflictPanel}><Text style={styles.conflictTitle}>Registros locales que requieren revisión</Text><Text style={styles.conflictIntro}>Estos datos permanecen guardados en el teléfono y no se eliminaron.</Text>{conflicts.map((conflict) => <View key={conflict.id} style={styles.conflictItem}><Text style={styles.conflictOperation}>{conflict.operationType === 'EMPLOYEE_NFC' ? 'Movimiento NFC' : 'Movimiento manual'} · {new Date(conflict.occurredAt).toLocaleString('es-CR')}</Text><Text style={styles.conflictDetail}>Operador: {conflict.operatorName}</Text><Text style={styles.conflictError}>{conflict.error}</Text></View>)}</View>}
             <View style={styles.stationCard}>
               <View style={styles.avatar}><Text style={styles.avatarText}>GD</Text></View>
               <View style={styles.stationText}>
@@ -137,6 +138,13 @@ const styles = StyleSheet.create({
   logout: { alignSelf: 'flex-start', marginTop: 12, paddingHorizontal: 11, paddingVertical: 7, borderWidth: 1, borderColor: '#5F8799', borderRadius: 8 },
   logoutText: { color: '#fff', fontSize: 11, fontWeight: '700' },
   body: { flex: 1, marginTop: -24, paddingHorizontal: 18, paddingBottom: 32, borderTopLeftRadius: 24, borderTopRightRadius: 24, backgroundColor: colors.background },
+  conflictPanel: { marginTop: 12, marginBottom: 16, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#E7A39B', backgroundColor: '#FFF1F0' },
+  conflictTitle: { color: '#8F251C', fontSize: 14, fontWeight: '900' },
+  conflictIntro: { color: '#71413D', fontSize: 11, lineHeight: 16, marginTop: 3, marginBottom: 8 },
+  conflictItem: { paddingTop: 8, marginTop: 6, borderTopWidth: 1, borderTopColor: '#EAC4C0' },
+  conflictOperation: { color: colors.text, fontSize: 12, fontWeight: '800' },
+  conflictDetail: { color: colors.muted, fontSize: 11, marginTop: 2 },
+  conflictError: { color: '#9B2C22', fontSize: 11, lineHeight: 16, marginTop: 3 },
   stationCard: { minHeight: 82, flexDirection: 'row', alignItems: 'center', padding: 16, marginBottom: 28, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, shadowColor: '#0B2E40', shadowOpacity: 0.09, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 3 },
   avatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginRight: 13, backgroundColor: '#E6F3EC' },
   avatarText: { color: colors.success, fontSize: 15, fontWeight: '800' },

@@ -23,7 +23,7 @@ export type PermanentProviderMovementResolution = { provider: { providerId:strin
 type InstitutionalVehicle = { id: string; plate: string; brand: string; model: string; year: number; fuelType: string; active: boolean; ownershipType: 'INSTITUCIONAL' };
 type PrivateVehicle = { id: string; plate: string; brand: string; model: string; color: string; active: boolean; ownershipType: 'PARTICULAR'; owner: Pick<Employee, 'id' | 'identification' | 'name' | 'active'> };
 export type ApiErrorDetails={authorizedRoute?:string;code?:string;entityType?:string;entityId?:string;requestedMovement?:'INGRESO'|'SALIDA'};
-export class ApiRequestError extends Error{details?:ApiErrorDetails;constructor(message:string,details?:ApiErrorDetails){super(message);this.name='ApiRequestError';this.details=details;}}
+export class ApiRequestError extends Error{details?:ApiErrorDetails;status:number;constructor(message:string,details?:ApiErrorDetails,status=0){super(message);this.name='ApiRequestError';this.details=details;this.status=status;}}
 
 async function apiRequest<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
   const headers = new Headers(init.headers);
@@ -34,7 +34,7 @@ async function apiRequest<T>(path: string, init: RequestInit = {}, token?: strin
   const body = (await response.json()) as T & { error?: string; details?: ApiErrorDetails };
   if (!response.ok) {
     const message = body.error ?? `La API respondió con estado ${response.status}`;
-    throw new ApiRequestError(body.details?.authorizedRoute ? `${message}. ${body.details.authorizedRoute}.` : message,body.details);
+    throw new ApiRequestError(body.details?.authorizedRoute ? `${message}. ${body.details.authorizedRoute}.` : message,body.details,response.status);
   }
   return body;
 }
@@ -74,8 +74,8 @@ export async function resolveNfcMovement(token: string, code: string) {
   return response.data;
 }
 
-export async function confirmNfcMovement(token: string, code: string, movementType: 'INGRESO' | 'SALIDA', source: 'NFC_SIMULADO' | 'NFC_FISICO' = 'NFC_FISICO') {
-  const response = await apiRequest<{ data: { id: string; movementType: 'INGRESO' | 'SALIDA'; occurredAt: string } }>('/api/v1/movements/employees/nfc', { method: 'POST', body: JSON.stringify({ code, movementType, source }) }, token);
+export async function confirmNfcMovement(token: string, code: string, movementType: 'INGRESO' | 'SALIDA', source: 'NFC_SIMULADO' | 'NFC_FISICO' = 'NFC_FISICO', offline?: { clientOperationId: string; clientOccurredAt: string }) {
+  const response = await apiRequest<{ data: { id: string; movementType: 'INGRESO' | 'SALIDA'; occurredAt: string; duplicate?: boolean } }>('/api/v1/movements/employees/nfc', { method: 'POST', body: JSON.stringify({ code, movementType, source, ...offline }) }, token);
   return response.data;
 }
 
@@ -92,8 +92,8 @@ export async function resolveManualMovement(token: string, employeeId: string) {
   return response.data;
 }
 
-export async function confirmManualMovement(token: string, employeeId: string, movementType: 'INGRESO' | 'SALIDA', reason: string) {
-  const response = await apiRequest<{ data: { id: string; movementType: 'INGRESO' | 'SALIDA'; occurredAt: string } }>('/api/v1/movements/employees/manual', { method: 'POST', body: JSON.stringify({ employeeId, movementType, reason }) }, token);
+export async function confirmManualMovement(token: string, employeeId: string, movementType: 'INGRESO' | 'SALIDA', reason: string, offline?: { clientOperationId: string; clientOccurredAt: string }) {
+  const response = await apiRequest<{ data: { id: string; movementType: 'INGRESO' | 'SALIDA'; occurredAt: string; duplicate?: boolean } }>('/api/v1/movements/employees/manual', { method: 'POST', body: JSON.stringify({ employeeId, movementType, reason, ...offline }) }, token);
   return response.data;
 }
 
