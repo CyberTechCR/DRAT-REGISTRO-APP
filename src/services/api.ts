@@ -1,5 +1,6 @@
 import { env } from '@/config/env';
 import type { Session } from '@/auth/SessionContext';
+import * as FileSystem from 'expo-file-system/legacy';
 
 interface ApiHealth {
   status: 'ok';
@@ -17,11 +18,12 @@ export async function getApiHealth(signal?: AbortSignal): Promise<ApiHealth> {
 
 export type PhotoMovementType = 'VEHICULO_PARTICULAR' | 'VEHICULO_INSTITUCIONAL' | 'VEHICULO_VISITANTE' | 'PROVEEDOR_PERMANENTE';
 export async function uploadMovementPhoto(token: string, photoUri: string, input: { movementType: PhotoMovementType; movementId: string; plate: string }) {
-  const localResponse = await fetch(photoUri);
-  if (!localResponse.ok) throw new Error('No fue posible leer la fotografía guardada en el teléfono. El movimiento sí quedó registrado');
-  const image = await localResponse.blob();
+  const imageBase64 = await FileSystem.readAsStringAsync(photoUri, { encoding: FileSystem.EncodingType.Base64 });
+  if (!imageBase64) throw new Error('No fue posible leer la fotografía guardada en el teléfono. El movimiento sí quedó registrado');
+  const extension = photoUri.split('?')[0]?.split('.').pop()?.toLowerCase();
+  const contentType = extension === 'png' ? 'image/png' : extension === 'webp' ? 'image/webp' : 'image/jpeg';
   const query = new URLSearchParams(input).toString();
-  const response = await fetch(`${env.apiUrl}/api/v1/movements/evidence/photos?${query}`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': image.type || 'image/jpeg' }, body: image });
+  const response = await fetch(`${env.apiUrl}/api/v1/movements/evidence/photos?${query}`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ imageBase64, contentType }) });
   const body = await response.json() as { data?: { id: string; url: string }; error?: string };
   if (!response.ok || !body.data) throw new Error(body.error ?? 'No fue posible almacenar la fotografía. El movimiento sí quedó registrado');
   return body.data;
