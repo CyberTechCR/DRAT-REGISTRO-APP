@@ -15,6 +15,18 @@ export async function getApiHealth(signal?: AbortSignal): Promise<ApiHealth> {
   return response.json() as Promise<ApiHealth>;
 }
 
+export type PhotoMovementType = 'VEHICULO_PARTICULAR' | 'VEHICULO_INSTITUCIONAL' | 'VEHICULO_VISITANTE' | 'PROVEEDOR_PERMANENTE';
+export async function uploadMovementPhoto(token: string, photoUri: string, input: { movementType: PhotoMovementType; movementId: string; plate: string }) {
+  const localResponse = await fetch(photoUri);
+  if (!localResponse.ok) throw new Error('No fue posible leer la fotografía guardada en el teléfono. El movimiento sí quedó registrado');
+  const image = await localResponse.blob();
+  const query = new URLSearchParams(input).toString();
+  const response = await fetch(`${env.apiUrl}/api/v1/movements/evidence/photos?${query}`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': image.type || 'image/jpeg' }, body: image });
+  const body = await response.json() as { data?: { id: string; url: string }; error?: string };
+  if (!response.ok || !body.data) throw new Error(body.error ?? 'No fue posible almacenar la fotografía. El movimiento sí quedó registrado');
+  return body.data;
+}
+
 export type Employee = { id: string; identification: string; name: string; department: string; position: string; active: boolean };
 export type NfcTagRecord = { id: string; code: string; employeeId: string | null; active: boolean; condition: 'OPERATIVO' | 'DANADO' | 'PERDIDO' | 'INACTIVO'; purpose: 'GENERAL' | 'VISITANTE'; operationalStatus: 'DISPONIBLE' | 'ASIGNADO' | 'DANADO' | 'PERDIDO' | 'INACTIVO'; visitorAssignment: { name: string } | null; providerAssignment: { id: string; name: string } | null; employee: Employee | null };
 export type PermanentProviderRecord = { id: string; identification: string; name: string; company: string; phone: string; active: boolean; vehicles: { id: string; plate: string; active: boolean }[]; tags: { id: string; code: string; active: boolean; condition: string }[] };
@@ -247,7 +259,7 @@ export async function updatePermanentProvider(token: string, id: string, input: 
 }
 
 export async function resolvePermanentProviderMovement(token:string,input:{code?:string;plate?:string}){const response=await apiRequest<{data:PermanentProviderMovementResolution}>('/api/v1/movements/permanent-providers/resolve',{method:'POST',body:JSON.stringify(input)},token);return response.data;}
-export async function confirmPermanentProviderMovement(token:string,input:{code?:string;plate?:string;movementType:'INGRESO'|'SALIDA'}){const response=await apiRequest<{data:unknown}>('/api/v1/movements/permanent-providers',{method:'POST',body:JSON.stringify(input)},token);return response.data;}
+export async function confirmPermanentProviderMovement(token:string,input:{code?:string;plate?:string;movementType:'INGRESO'|'SALIDA'}){const response=await apiRequest<{data:{id:string}}>('/api/v1/movements/permanent-providers',{method:'POST',body:JSON.stringify(input)},token);return response.data;}
 export async function createVehicleExceptionAuthorization(token:string,input:{entityId:string;movementType:'INGRESO'|'SALIDA';reason:string;authorizedByReference:string;observations:string}){const response=await apiRequest<{data:unknown}>('/api/v1/movements/contingencies',{method:'POST',body:JSON.stringify({entityType:'VEHICULO_PARTICULAR',...input})},token);return response.data;}
 
 export async function deleteNfcTag(token: string, id: string) {

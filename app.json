@@ -35,6 +35,13 @@
         }
       ],
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "SICAF necesita acceso a las fotografías para seleccionar una imagen de una placa vehicular.",
+          "cameraPermission": false
+        }
+      ],
+      [
         "rn-mlkit-ocr",
         {
           "ocrModels": ["latin"],
