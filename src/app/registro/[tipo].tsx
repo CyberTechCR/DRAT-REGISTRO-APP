@@ -82,11 +82,44 @@ function EmergencyPresenceScreen() {
   const { isOnline } = useOffline();
   const [people, setPeople] = useState<EmergencyPresenceRecord[]>([]);
   const [loading, setLoading] = useState(true); const [error, setError] = useState('');
-  useEffect(() => { if (!session) return; getEmergencyPresence(session.token).then(async (data) => { setPeople(data); await saveCache('emergency-presence', data); }).catch(async () => { const cached = await readCache<EmergencyPresenceRecord[]>('emergency-presence'); if (cached) { setPeople(cached); setError('Mostrando la última lista guardada en el dispositivo.'); } else setError('No hay una lista local disponible. Conéctese una vez para sincronizarla.'); }).finally(() => setLoading(false)); }, [session]);
+  const [source, setSource] = useState<'SERVIDOR' | 'LOCAL'>('LOCAL');
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [hasSnapshot, setHasSnapshot] = useState(false);
+  useEffect(() => {
+    if (!session) return;
+    const token = session.token;
+    let active = true;
+    async function loadCachedPresence(message = '') {
+      const [cached, cachedAt] = await Promise.all([
+        readCache<EmergencyPresenceRecord[]>('emergency-presence'),
+        readCache<string>('emergency-presence-synced-at'),
+      ]);
+      if (!active) return;
+      setSource('LOCAL'); setLastSyncedAt(cachedAt);
+      if (cached !== null) { setPeople(cached); setHasSnapshot(true); setError(message); }
+      else { setHasSnapshot(false); setError('No hay una lista local disponible. Conéctese una vez para sincronizarla.'); }
+    }
+    async function loadPresence() {
+      setLoading(true); setError('');
+      if (!isOnline) { await loadCachedPresence(); setLoading(false); return; }
+      try {
+        const data = await getEmergencyPresence(token);
+        const syncedAt = new Date().toISOString();
+        await Promise.all([saveCache('emergency-presence', data), saveCache('emergency-presence-synced-at', syncedAt)]);
+        if (!active) return;
+        setPeople(data); setHasSnapshot(true); setSource('SERVIDOR'); setLastSyncedAt(syncedAt);
+      } catch {
+        await loadCachedPresence('No fue posible consultar el servidor. Se muestra la última lista guardada.');
+      } finally { if (active) setLoading(false); }
+    }
+    void loadPresence();
+    return () => { active = false; };
+  }, [session, isOnline]);
   if (!session) return <Redirect href={'/login' as Href} />;
   return <SafeAreaView style={styles.screen}><ConnectionBanner/><View style={styles.header}><Pressable onPress={() => router.back()} style={styles.backButton}><Text style={styles.backText}>‹ Volver</Text></Pressable><Text style={styles.brand}>SICAF · DRAT</Text></View><ScrollView contentContainerStyle={styles.nfcContent}>
     <Text style={styles.eyebrow}>CONTROL DE AFORO</Text><Text style={styles.title}>Lista de emergencia</Text><Text style={styles.description}>{people.length} {people.length === 1 ? 'persona dentro' : 'personas dentro'}. Incluye funcionarios y visitantes con ingreso vigente.</Text>
-    {loading ? <ActivityIndicator color={colors.primary}/> : people.length === 0 ? <View style={styles.notice}><Text style={styles.noticeTitle}>Plantel sin personas registradas</Text><Text style={styles.noticeText}>Actualmente no existe ningún funcionario ni visitante con estado de ingreso.</Text></View> : people.map((person) => <View key={`${person.kind}-${person.id}`} style={styles.employeeResult}><Text style={styles.confirmLabel}>{person.kind}</Text><Text style={styles.employeeResultName}>{person.name}</Text><Text style={styles.employeeDetail}>{person.identification}</Text><Text style={styles.employeeDetail}>{person.detail}</Text><Text style={styles.employeeDetail}>Ingreso: {new Date(person.enteredAt).toLocaleString('es-CR')}</Text></View>)}
+    <View style={styles.emergencySnapshot}><Text style={styles.emergencySnapshotTitle}>{source === 'LOCAL' ? 'INFORMACIÓN LOCAL DISPONIBLE' : 'INFORMACIÓN SINCRONIZADA'}</Text><Text style={styles.emergencySnapshotText}>Fuente: {source === 'LOCAL' ? 'memoria de este dispositivo' : 'servidor SICAF'}</Text><Text style={styles.emergencySnapshotText}>Última sincronización: {lastSyncedAt ? new Date(lastSyncedAt).toLocaleString('es-CR') : 'Aún no disponible'}</Text></View>
+    {loading ? <ActivityIndicator color={colors.primary}/> : !hasSnapshot ? null : people.length === 0 ? <View style={styles.notice}><Text style={styles.noticeTitle}>Plantel sin personas registradas</Text><Text style={styles.noticeText}>Actualmente no existe ningún funcionario ni visitante con estado de ingreso.</Text></View> : people.map((person) => <View key={`${person.kind}-${person.id}`} style={styles.employeeResult}><Text style={styles.confirmLabel}>{person.kind}</Text><Text style={styles.employeeResultName}>{person.name}</Text><Text style={styles.employeeDetail}>{person.identification}</Text><Text style={styles.employeeDetail}>{person.detail}</Text><Text style={styles.employeeDetail}>Ingreso: {new Date(person.enteredAt).toLocaleString('es-CR')}</Text></View>)}
     {!isOnline ? <View style={styles.notice}><Text style={styles.noticeTitle}>Consulta local</Text><Text style={styles.noticeText}>Esta lista corresponde a la última sincronización y permanece disponible aunque cierre la aplicación.</Text></View> : null}{error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
   </ScrollView></SafeAreaView>;
 }
@@ -448,6 +481,9 @@ const styles = StyleSheet.create({
   },
   noticeTitle: { color: '#087344', fontSize: 14, fontWeight: '800' },
   noticeText: { color: '#3F6554', fontSize: 13, lineHeight: 20, marginTop: 5 },
+  emergencySnapshot: { padding: 15, marginTop: 18, marginBottom: 16, borderWidth: 1, borderColor: '#BFD7E8', borderRadius: 13, backgroundColor: '#E8F1F8' },
+  emergencySnapshotTitle: { color: colors.primary, fontSize: 11, fontWeight: '900', letterSpacing: .7 },
+  emergencySnapshotText: { color: colors.text, fontSize: 13, lineHeight: 19, marginTop: 4 },
   nfcContent: { padding: 22, paddingBottom: 45 },
   testBadge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 7, marginBottom: 24, borderRadius: 999, backgroundColor: '#FFF3D5' },
   testBadgeText: { color: '#7D4C00', fontSize: 9, fontWeight: '900', letterSpacing: .5 },
